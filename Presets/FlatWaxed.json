@@ -1,0 +1,20 @@
+{
+    "category": "糸の質感",
+    "order": 120,
+    "mask": "FlatWaxed",
+    "length": 0.004,
+    "width": 0.00125,
+    "spacing": 0.005,
+    "angleOffset": 0.0,
+    "threadColor": {
+        "r": 0.93,
+        "g": 0.88,
+        "b": 0.76,
+        "a": 1.0
+    },
+    "heightScale": 1.0,
+    "normalStrength": 0.2,
+    "jitterPosition": 0.0,
+    "jitterAngle": 0.0,
+    "seed": 0
+}

@@ -1,0 +1,20 @@
+{
+    "category": "かがり・端処理",
+    "order": 230,
+    "mask": "Blanket",
+    "length": 0.004,
+    "width": 0.005,
+    "spacing": 0.004,
+    "angleOffset": 0.0,
+    "threadColor": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1.0
+    },
+    "heightScale": 1.0,
+    "normalStrength": 0.066,
+    "jitterPosition": 0.0,
+    "jitterAngle": 0.0,
+    "seed": 0
+}

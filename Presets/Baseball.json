@@ -1,0 +1,20 @@
+{
+    "category": "装飾",
+    "order": 340,
+    "mask": "Baseball",
+    "length": 0.003,
+    "width": 0.005,
+    "spacing": 0.003,
+    "angleOffset": 0.0,
+    "threadColor": {
+        "r": 0.78,
+        "g": 0.1,
+        "b": 0.1,
+        "a": 1.0
+    },
+    "heightScale": 1.0,
+    "normalStrength": 0.07,
+    "jitterPosition": 0.0,
+    "jitterAngle": 0.0,
+    "seed": 0
+}

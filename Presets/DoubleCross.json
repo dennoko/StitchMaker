@@ -1,0 +1,20 @@
+{
+    "category": "装飾",
+    "order": 320,
+    "mask": "DoubleCross",
+    "length": 0.0045,
+    "width": 0.0045,
+    "spacing": 0.0055,
+    "angleOffset": 0.0,
+    "threadColor": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1.0
+    },
+    "heightScale": 1.0,
+    "normalStrength": 0.063,
+    "jitterPosition": 0.0,
+    "jitterAngle": 0.0,
+    "seed": 0
+}

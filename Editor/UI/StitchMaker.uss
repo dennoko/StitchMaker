@@ -1,0 +1,90 @@
+/* StitchMaker 固有のスタイル。
+   規約: セレクタは必ず .dennoko-root を前置し、色は var(--dennoko-*) を経由する。
+   DennokoTheme.uss の後に読み込むこと。 */
+
+/* 横並びの行 */
+.dennoko-root .stitch-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+}
+
+/* 行の中で伸び縮みする要素（flex-grow と flex-shrink は必ずセット） */
+.dennoko-root .stitch-grow {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow: hidden;
+}
+
+/* 行の中で幅を保つ要素 */
+.dennoko-root .stitch-fixed {
+    flex-shrink: 0;
+}
+
+.dennoko-root .stitch-icon-button {
+    width: 26px;
+    flex-shrink: 0;
+}
+
+.dennoko-root .stitch-hidden {
+    display: none;
+}
+
+/* カード見出しの右にボタンを並べるヘッダー */
+.dennoko-root .stitch-card-header-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.dennoko-root .stitch-row-label {
+    min-width: 72px;
+    flex-shrink: 0;
+}
+
+/* パス一覧の名前ボタン */
+.dennoko-root .unity-button.stitch-path-name {
+    -unity-text-align: middle-left;
+    padding-left: 8px;
+}
+
+.dennoko-root .stitch-path-list {
+    margin-bottom: 4px;
+}
+
+/* カード内の注意書き */
+.dennoko-root .stitch-message {
+    white-space: normal;
+    font-size: 11px;
+    margin-top: 6px;
+    color: var(--dennoko-text-tertiary);
+}
+
+.dennoko-root .stitch-message--warning {
+    color: var(--dennoko-semantic-warning);
+}
+
+.dennoko-root .stitch-message--error {
+    color: var(--dennoko-status-error-text);
+}
+
+/* トグルを横に並べるときの間隔 */
+.dennoko-root .stitch-inline-toggle {
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+/* ヘッダー右側の言語切替 */
+.dennoko-root .stitch-lang-group {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.dennoko-root .unity-button.stitch-lang-button {
+    width: 30px;
+    font-size: 10px;
+    padding: 0;
+}

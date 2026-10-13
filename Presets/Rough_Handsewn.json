@@ -1,0 +1,20 @@
+{
+    "category": "特殊",
+    "order": 410,
+    "mask": "Rough",
+    "length": 0.004,
+    "width": 0.0015,
+    "spacing": 0.005,
+    "angleOffset": 0.0,
+    "threadColor": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1.0
+    },
+    "heightScale": 1.0,
+    "normalStrength": 0.42,
+    "jitterPosition": 0.0003,
+    "jitterAngle": 12.0,
+    "seed": 0
+}

@@ -1,0 +1,127 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+
+    <!-- テキストは日本語で書き、Loc.Apply() が表示言語に合わせて差し替える。
+         コードから文言を入れる要素（パス名・バージョン・ステータス等）には stitch-no-loc を付ける。 -->
+
+    <!-- ヘッダー -->
+    <ui:VisualElement name="header" class="dennoko-header">
+        <ui:VisualElement class="dennoko-header-titlegroup stitch-no-loc">
+            <ui:Label text="STITCH MAKER" class="dennoko-title" />
+            <ui:Label name="version-label" text="" class="dennoko-version-label" />
+            <ui:Button name="version-reload-button" text="↻" class="dennoko-version-reload-button" />
+        </ui:VisualElement>
+        <ui:VisualElement class="stitch-lang-group stitch-no-loc">
+            <ui:Button name="lang-ja-button" text="JA" class="stitch-lang-button" />
+            <ui:Button name="lang-en-button" text="EN" class="stitch-lang-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+    <ui:VisualElement class="dennoko-separator" />
+
+    <!-- 設定エリア。ウィンドウ縮小時はここだけが縮む -->
+    <ui:ScrollView class="dennoko-scroll">
+
+        <!-- 対象 -->
+        <ui:VisualElement class="dennoko-card">
+            <ui:Label text="対象" class="dennoko-section-title dennoko-card-header" />
+            <uie:ObjectField name="target-field" label="Renderer" allow-scene-objects="true"
+                type="UnityEngine.Renderer, UnityEngine.CoreModule" />
+            <ui:DropdownField name="material-dropdown" label="Material" class="stitch-no-loc" />
+            <ui:Button name="refresh-mesh-button" text="メッシュを再取得" class="dennoko-button-secondary" />
+            <ui:VisualElement class="stitch-no-loc">
+                <ui:Label name="target-message" text="" class="stitch-message" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- パス -->
+        <ui:VisualElement class="dennoko-card">
+            <ui:VisualElement class="dennoko-card-header stitch-card-header-row">
+                <ui:Label text="パス" class="dennoko-section-title" />
+                <ui:VisualElement class="stitch-row">
+                    <ui:Button name="new-document-button" text="新規" class="stitch-fixed" />
+                    <ui:Button name="load-document-button" text="読込" class="stitch-fixed" />
+                    <ui:Button name="save-document-button" text="保存" class="stitch-fixed" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <!-- 行は C# で生成する（動的リスト） -->
+            <ui:VisualElement name="path-list" class="stitch-path-list stitch-no-loc" />
+            <ui:Button name="add-path-button" text="+ パスを追加" class="dennoko-button-secondary" />
+            <ui:VisualElement class="stitch-row">
+                <ui:Button name="edit-mode-button" text="編集モード" class="stitch-fixed" />
+                <ui:Toggle name="closed-toggle" text="閉じる" class="stitch-inline-toggle" />
+                <ui:Toggle name="bezier-toggle" text="ベジェハンドル" class="stitch-inline-toggle" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- ステッチ設定（パス未選択時は非表示） -->
+        <ui:VisualElement name="settings-card" class="dennoko-card">
+            <ui:Label text="ステッチ設定（選択中のパス）" class="dennoko-section-title dennoko-card-header" />
+            <ui:VisualElement class="stitch-row">
+                <ui:Label text="プリセット" class="stitch-row-label" />
+                <ui:Button name="apply-preset-button" text="適用…" class="stitch-grow" />
+                <ui:Button name="delete-preset-button" text="削除…" class="stitch-grow" />
+                <ui:Button name="preset-folder-button" text="フォルダ" class="stitch-grow" />
+            </ui:VisualElement>
+            <ui:VisualElement class="stitch-row">
+                <ui:TextField name="preset-name-field" label="プリセット名" class="stitch-grow" />
+                <ui:Button name="save-preset-button" text="保存" class="stitch-fixed" />
+            </ui:VisualElement>
+            <ui:VisualElement class="dennoko-separator" />
+            <ui:TextField name="path-name-field" label="名前" />
+            <uie:ObjectField name="mask-field" label="マスク" allow-scene-objects="false"
+                type="UnityEngine.Texture2D, UnityEngine.CoreModule" />
+            <ui:Slider name="length-slider" label="長さ (mm)" low-value="0.5" high-value="20" show-input-field="true" />
+            <ui:Slider name="width-slider" label="幅 (mm)" low-value="0.1" high-value="10" show-input-field="true" />
+            <ui:Slider name="spacing-slider" label="間隔 (mm)" low-value="0.5" high-value="30" show-input-field="true" />
+            <ui:Slider name="angle-slider" label="角度 (°)" low-value="-180" high-value="180" show-input-field="true" />
+            <uie:ColorField name="thread-color-field" label="糸の色" show-alpha="false" />
+            <ui:Slider name="height-slider" label="高さ" low-value="0" high-value="1" show-input-field="true" />
+            <ui:Slider name="normal-slider" label="凹凸の強さ" low-value="0" high-value="2" show-input-field="true" />
+            <ui:Slider name="jitter-position-slider" label="ゆらぎ・位置 (mm)" low-value="0" high-value="2" show-input-field="true" />
+            <ui:Slider name="jitter-angle-slider" label="ゆらぎ・角度 (°)" low-value="0" high-value="30" show-input-field="true" />
+            <ui:IntegerField name="seed-field" label="Seed" />
+            <ui:Label name="mask-warning" text="マスクが未設定のパスは描画されません。" class="stitch-message stitch-message--warning" />
+        </ui:VisualElement>
+
+        <!-- プレビュー・出力 -->
+        <ui:VisualElement class="dennoko-card">
+            <ui:Label text="プレビュー・出力" class="dennoko-section-title dennoko-card-header" />
+            <ui:VisualElement class="stitch-row">
+                <ui:Toggle name="preview-toggle" text="プレビュー" class="stitch-fixed" />
+                <ui:VisualElement class="stitch-row stitch-grow stitch-inline-toggle stitch-no-loc">
+                    <ui:Button name="preview-combined-button" text="Combined" class="stitch-grow" />
+                    <ui:Button name="preview-normal-button" text="Normal" class="stitch-grow" />
+                    <ui:Button name="preview-height-button" text="Height" class="stitch-grow" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:DropdownField name="resolution-dropdown" label="解像度" />
+            <ui:SliderInt name="padding-slider" label="パディング (px)" low-value="0" high-value="16" show-input-field="true" />
+            <ui:VisualElement class="stitch-row">
+                <ui:Label text="出力" class="stitch-row-label" />
+                <ui:VisualElement class="stitch-row stitch-no-loc">
+                    <ui:Toggle name="export-color-toggle" text="Color" class="stitch-fixed" />
+                    <ui:Toggle name="export-normal-toggle" text="Normal" class="stitch-inline-toggle" />
+                    <ui:Toggle name="export-height-toggle" text="Height" class="stitch-inline-toggle" />
+                    <ui:Toggle name="export-mask-toggle" text="Mask" class="stitch-inline-toggle" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement class="stitch-row">
+                <ui:TextField name="export-folder-field" label="出力先" class="stitch-grow" />
+                <ui:Button name="export-folder-button" text="..." class="stitch-icon-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:ScrollView>
+
+    <ui:VisualElement class="dennoko-separator" />
+
+    <!-- フッター -->
+    <ui:VisualElement class="dennoko-card dennoko-footer">
+        <ui:Button name="export-button" text="テクスチャを出力" class="dennoko-button-primary" />
+    </ui:VisualElement>
+
+    <!-- ステータスバー -->
+    <ui:VisualElement class="stitch-no-loc stitch-fixed">
+        <ui:Label name="status-label" text="" class="dennoko-status" />
+    </ui:VisualElement>
+
+</ui:UXML>

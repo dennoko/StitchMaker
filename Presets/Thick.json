@@ -1,0 +1,20 @@
+{
+    "category": "基本",
+    "order": 40,
+    "mask": "Thick",
+    "length": 0.005,
+    "width": 0.0015,
+    "spacing": 0.0065,
+    "angleOffset": 0.0,
+    "threadColor": {
+        "r": 0.93,
+        "g": 0.88,
+        "b": 0.76,
+        "a": 1.0
+    },
+    "heightScale": 1.0,
+    "normalStrength": 0.56,
+    "jitterPosition": 0.0,
+    "jitterAngle": 0.0,
+    "seed": 0
+}

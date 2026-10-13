@@ -1,0 +1,179 @@
+Shader "Hidden/dennokoworks/StitchMaker/Bake"
+{
+    Properties
+    {
+        _MainTex ("Source", 2D) = "black" {}
+        _MaskTex ("Mask", 2D) = "black" {}
+        _ValidTex ("Valid", 2D) = "black" {}
+        _Color ("Thread Color", Color) = (1, 1, 1, 1)
+        _HeightScale ("Height Scale", Float) = 1
+        _NormalScale ("Normal Scale", Vector) = (1, 1, 0, 0)
+    }
+
+    CGINCLUDE
+    #include "UnityCG.cginc"
+
+    // UV (0-1) をそのままレンダーターゲット上の位置にする。
+    float4 UvToClip(float2 uv)
+    {
+        float2 p = uv * 2.0 - 1.0;
+    #if UNITY_UV_STARTS_AT_TOP
+        p.y = -p.y;
+    #endif
+        return float4(p, 0.5, 1.0);
+    }
+    ENDCG
+
+    SubShader
+    {
+        Cull Off
+
+        // Pass 0: Decal（Color / Normal / Height の MRT。マスク値の高いステッチが勝つ）
+        Pass
+        {
+            ZTest LEqual
+            ZWrite On
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            sampler2D _MaskTex;
+            float4 _MaskTex_TexelSize;
+            float4 _Color;
+            float _HeightScale;
+            float4 _NormalScale; // x: 長さ方向, y: 幅方向
+
+            struct appdata
+            {
+                float4 vertex : POSITION;      // (uv.x, uv.y, 0)
+                float3 stitch : TEXCOORD0;     // (マスク U, マスク V, 正規化深度)
+                float3 tangentAxis : TEXCOORD1;   // ステッチ接線（メッシュ接空間）
+                float3 bitangentAxis : TEXCOORD2; // ステッチ従法線（メッシュ接空間）
+            };
+
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                float3 stitch : TEXCOORD0;
+                float3 tangentAxis : TEXCOORD1;
+                float3 bitangentAxis : TEXCOORD2;
+            };
+
+            struct fragOutput
+            {
+                float4 color : SV_Target0;
+                float4 normal : SV_Target1;
+                float4 height : SV_Target2;
+                float depth : SV_Depth;
+            };
+
+            v2f vert(appdata v)
+            {
+                v2f o;
+                o.pos = UvToClip(v.vertex.xy);
+                o.stitch = v.stitch;
+                o.tangentAxis = v.tangentAxis;
+                o.bitangentAxis = v.bitangentAxis;
+                return o;
+            }
+
+            fragOutput frag(v2f i)
+            {
+                float3 st = i.stitch;
+                if (st.x < 0.0 || st.x > 1.0 || st.y < 0.0 || st.y > 1.0 || abs(st.z) > 1.0)
+                    discard;
+
+                float2 e = _MaskTex_TexelSize.xy;
+                float m = tex2D(_MaskTex, st.xy).r;
+                float ms = (tex2D(_MaskTex, st.xy + float2(e.x, 0)).r - tex2D(_MaskTex, st.xy - float2(e.x, 0)).r) / (2.0 * e.x);
+                float mt = (tex2D(_MaskTex, st.xy + float2(0, e.y)).r - tex2D(_MaskTex, st.xy - float2(0, e.y)).r) / (2.0 * e.y);
+
+                float3 n = float3(0, 0, 1)
+                    - _NormalScale.x * ms * i.tangentAxis
+                    - _NormalScale.y * mt * i.bitangentAxis;
+                n = normalize(n);
+
+                fragOutput o;
+                o.color = float4(_Color.rgb, saturate(m * 20.0));
+                o.normal = float4(n * 0.5 + 0.5, 1.0);
+                o.height = float4(m * _HeightScale, 0, 0, 1);
+            #if defined(UNITY_REVERSED_Z)
+                o.depth = m;
+            #else
+                o.depth = 1.0 - m;
+            #endif
+                return o;
+            }
+            ENDCG
+        }
+
+        // Pass 1: IslandMask（UV アイランド内を 1 にする）
+        Pass
+        {
+            ZTest Always
+            ZWrite Off
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            struct appdata
+            {
+                float2 uv : TEXCOORD0;
+            };
+
+            float4 vert(appdata v) : SV_POSITION
+            {
+                return UvToClip(v.uv);
+            }
+
+            float4 frag() : SV_Target
+            {
+                return float4(1, 1, 1, 1);
+            }
+            ENDCG
+        }
+
+        // Pass 2: Dilate（無効画素を有効な 8 近傍の平均で埋める。1 回で 1px 拡張）
+        Pass
+        {
+            ZTest Always
+            ZWrite Off
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+
+            sampler2D _MainTex;
+            float4 _MainTex_TexelSize;
+            sampler2D _ValidTex;
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                float4 center = tex2Dlod(_MainTex, float4(i.uv, 0, 0));
+                if (tex2Dlod(_ValidTex, float4(i.uv, 0, 0)).r > 0.5)
+                    return center;
+
+                // 中心は無効画素なので、3x3 をそのまま走査しても寄与しない。
+                float4 sum = 0;
+                float count = 0;
+                for (int y = -1; y <= 1; y++)
+                {
+                    for (int x = -1; x <= 1; x++)
+                    {
+                        float2 uv = i.uv + float2(x, y) * _MainTex_TexelSize.xy;
+                        float valid = step(0.5, tex2Dlod(_ValidTex, float4(uv, 0, 0)).r);
+                        sum += tex2Dlod(_MainTex, float4(uv, 0, 0)) * valid;
+                        count += valid;
+                    }
+                }
+                return count > 0.0 ? sum / count : center;
+            }
+            ENDCG
+        }
+    }
+}
