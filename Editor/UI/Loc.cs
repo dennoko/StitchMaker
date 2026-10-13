@@ -181,6 +181,12 @@ namespace Dennokoworks.StitchMaker
             { "パスを保存しました: {0}", "Paths saved: {0}" },
             { "UXML が見つかりません。GUID を確認してください。", "UXML asset not found. Check the GUID." },
 
+            // ---- シーンビューの操作ガイド
+            { "パス編集モード", "Path Edit Mode" },
+            { "左クリック：制御点を追加", "Left Click: Add control point" },
+            { "ドラッグ：制御点を移動", "Drag: Move control point" },
+            { "右クリック：制御点を削除", "Right Click: Delete control point" },
+
             // ---- MeshSnapshot のエラー
             { "対象の Renderer にメッシュがありません（SkinnedMeshRenderer か、MeshFilter 付きの MeshRenderer を指定してください）。",
               "The Renderer has no mesh (use a SkinnedMeshRenderer, or a MeshRenderer with a MeshFilter)." },

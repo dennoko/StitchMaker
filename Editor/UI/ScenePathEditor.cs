@@ -25,6 +25,11 @@ namespace Dennokoworks.StitchMaker
         static readonly Color SelectedNodeColor = new Color(1f, 0.85f, 0.1f, 1f);
         static readonly Color HandleColor = new Color(1f, 0.4f, 0.8f, 1f);
 
+        static readonly Color GuideColor = new Color(0.3f, 0.95f, 0.45f, 1f);
+        static readonly Color GuideBackground = new Color(0.16f, 0.16f, 0.16f, 0.94f);
+        static readonly string[] guideLines = new string[3];
+        static GUIStyle guideTitleStyle, guideLineStyle;
+
         static readonly List<Vector3> polyline = new List<Vector3>();
         static Vector3[] lineBuffer = new Vector3[0];
 
@@ -86,7 +91,55 @@ namespace Dennokoworks.StitchMaker
                         break;
                 }
             }
+
+            if (e.type == EventType.Repaint) DrawGuide(camera);
             return changed;
+        }
+
+        // シーンビュー右下に出す操作ガイド。表示だけで入力は受けない（上をクリックしても編集操作になる）。
+        static void DrawGuide(Camera camera)
+        {
+            if (guideTitleStyle == null)
+            {
+                guideTitleStyle = new GUIStyle(EditorStyles.boldLabel) { normal = { textColor = Color.white } };
+                guideLineStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13, normal = { textColor = GuideColor } };
+            }
+
+            guideLines[0] = Loc.T("左クリック：制御点を追加");
+            guideLines[1] = Loc.T("ドラッグ：制御点を移動");
+            guideLines[2] = Loc.T("右クリック：制御点を削除");
+            string title = Loc.T("パス編集モード");
+
+            const float margin = 10f, padding = 8f, titleHeight = 20f, lineHeight = 20f;
+            float width = guideTitleStyle.CalcSize(new GUIContent(title)).x;
+            foreach (var line in guideLines)
+                width = Mathf.Max(width, guideLineStyle.CalcSize(new GUIContent(line)).x);
+            width += padding * 2f;
+            float height = padding * 2f + titleHeight + lineHeight * guideLines.Length;
+
+            // カメラのピクセルサイズから GUI 座標系での描画領域を求め、右下に寄せる。
+            float scale = EditorGUIUtility.pixelsPerPoint;
+            var rect = new Rect(camera.pixelWidth / scale - width - margin,
+                camera.pixelHeight / scale - height - margin, width, height);
+
+            Handles.BeginGUI();
+            EditorGUI.DrawRect(rect, GuideBackground);
+            const float border = 2f;
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, border), GuideColor);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - border, rect.width, border), GuideColor);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, border, rect.height), GuideColor);
+            EditorGUI.DrawRect(new Rect(rect.xMax - border, rect.y, border, rect.height), GuideColor);
+
+            var row = new Rect(rect.x + padding, rect.y + padding, width - padding * 2f, titleHeight);
+            GUI.Label(row, title, guideTitleStyle);
+            row.y += titleHeight;
+            row.height = lineHeight;
+            foreach (var line in guideLines)
+            {
+                GUI.Label(row, line, guideLineStyle);
+                row.y += lineHeight;
+            }
+            Handles.EndGUI();
         }
 
         static bool OnLeftDown(StitchDocument document, MeshSnapshot snapshot, int id,
