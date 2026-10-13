@@ -15,6 +15,15 @@ namespace Dennokoworks.StitchMaker
         public Vector3 handleOut;
     }
 
+    /// <summary>ミラーの対称軸（メッシュ空間）。対称面はその軸の座標が 0 の平面。</summary>
+    public enum MirrorAxis
+    {
+        None = 0,
+        X = 1,
+        Y = 2,
+        Z = 3,
+    }
+
     [Serializable]
     public class StitchPath
     {
@@ -22,6 +31,9 @@ namespace Dennokoworks.StitchMaker
         public bool visible = true;
         public bool closed;
         public bool manualHandles;
+        public MirrorAxis mirrorAxis = MirrorAxis.None;
+        // 鏡映した制御点を反対側の表面へ吸着させるときの探索半径（メートル）。
+        public float mirrorSnapRadius = 0.03f;
         public Texture2D mask;
         public StitchSettings settings = new StitchSettings();
         public List<StitchNode> nodes = new List<StitchNode>();
