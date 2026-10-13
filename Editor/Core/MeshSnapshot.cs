@@ -27,6 +27,7 @@ namespace Dennokoworks.StitchMaker
         int[] cellItems;
         int[] stamps;
         int queryId;
+        readonly List<int> snapCandidates = new List<int>();
 
         public MeshSnapshot(Renderer renderer, int materialIndex)
         {
@@ -200,6 +201,122 @@ namespace Dennokoworks.StitchMaker
                     results.Add(triangle);
                 }
             }
+        }
+
+        /// <summary>
+        /// origin を、normalHint と同じ側を向いた近傍の表面へ吸着させる。
+        /// まず法線方向のレイキャスト、外れたら三角形上の最近傍点を使う。
+        /// radius 内に該当する三角形が無ければ false を返し、origin / normalHint をそのまま返す。
+        /// </summary>
+        public bool TrySnapToSurface(Vector3 origin, Vector3 normalHint, float radius,
+            out Vector3 snappedPosition, out Vector3 snappedNormal)
+        {
+            const float FacingThreshold = 0.2f;
+            snappedPosition = origin;
+            snappedNormal = normalHint;
+            if (radius <= 0f || normalHint == Vector3.zero) return false;
+
+            QueryTriangles(new Bounds(origin, Vector3.one * (radius * 2f)), snapCandidates);
+
+            var vertices = Vertices;
+            var triangles = Triangles;
+            var rayOrigin = origin + normalHint * radius;
+            var direction = -normalHint;
+
+            // レイの交点は origin に最も近いもの（t が radius に最も近いもの）を採る。
+            float bestRay = float.MaxValue;
+            float bestNearest = radius * radius;
+            bool hitRay = false, hitNearest = false;
+            var rayNormal = normalHint;
+            var nearestPosition = origin;
+            var nearestNormal = normalHint;
+
+            foreach (int triangle in snapCandidates)
+            {
+                int i0 = triangles[triangle * 3], i1 = triangles[triangle * 3 + 1], i2 = triangles[triangle * 3 + 2];
+                var v0 = vertices[i0];
+                var e1 = vertices[i1] - v0;
+                var e2 = vertices[i2] - v0;
+                var faceNormal = Vector3.Cross(e1, e2).normalized;
+                // 裏面や、厚みの反対側の壁には吸着させない。
+                if (Vector3.Dot(faceNormal, normalHint) <= FacingThreshold) continue;
+
+                var p = Vector3.Cross(direction, e2);
+                float det = Vector3.Dot(e1, p);
+                if (det > 1e-12f)
+                {
+                    var s = rayOrigin - v0;
+                    float u = Vector3.Dot(s, p) / det;
+                    var q = Vector3.Cross(s, e1);
+                    float v = Vector3.Dot(direction, q) / det;
+                    float t = Vector3.Dot(e2, q) / det;
+                    if (u >= 0f && v >= 0f && u + v <= 1f && t >= 0f && t <= radius * 2f
+                        && Mathf.Abs(t - radius) < bestRay)
+                    {
+                        bestRay = Mathf.Abs(t - radius);
+                        hitRay = true;
+                        snappedPosition = rayOrigin + direction * t;
+                        rayNormal = (Normals[i0] * (1f - u - v) + Normals[i1] * u + Normals[i2] * v).normalized;
+                        if (rayNormal == Vector3.zero) rayNormal = faceNormal;
+                    }
+                }
+                if (hitRay) continue;
+
+                var closest = ClosestPointOnTriangle(origin, v0, vertices[i1], vertices[i2]);
+                float sqrDistance = (closest - origin).sqrMagnitude;
+                if (sqrDistance <= bestNearest)
+                {
+                    bestNearest = sqrDistance;
+                    hitNearest = true;
+                    nearestPosition = closest;
+                    nearestNormal = faceNormal;
+                }
+            }
+
+            if (hitRay)
+            {
+                snappedNormal = rayNormal;
+                return true;
+            }
+            if (hitNearest)
+            {
+                snappedPosition = nearestPosition;
+                snappedNormal = nearestNormal;
+                return true;
+            }
+            return false;
+        }
+
+        // Ericson "Real-Time Collision Detection" 5.1.5
+        static Vector3 ClosestPointOnTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            var ab = b - a;
+            var ac = c - a;
+            var ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+            if (d1 <= 0f && d2 <= 0f) return a;
+
+            var bp = p - b;
+            float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+            if (d3 >= 0f && d4 <= d3) return b;
+
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0f && d1 >= 0f && d3 <= 0f) return a + ab * (d1 / (d1 - d3));
+
+            var cp = p - c;
+            float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+            if (d6 >= 0f && d5 <= d6) return c;
+
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0f && d2 >= 0f && d6 <= 0f) return a + ac * (d2 / (d2 - d6));
+
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0f && d4 - d3 >= 0f && d5 - d6 >= 0f)
+                return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+
+            float denominator = va + vb + vc;
+            if (Mathf.Abs(denominator) < 1e-20f) return a; // 縮退三角形
+            return a + ab * (vb / denominator) + ac * (vc / denominator);
         }
 
         void ApplyScale(Vector3 scale)
