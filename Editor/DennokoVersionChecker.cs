@@ -53,9 +53,10 @@ namespace Dennokoworks.StitchMaker
         {
             if (onResult == null) return;
 
-            // 候補ブランチ: 指定ブランチ → "main" (重複は除外)
+            // 候補ブランチ: 指定ブランチ → "master" → "main" (重複は除外)
             var branches = new List<string>();
             if (!string.IsNullOrEmpty(branch)) branches.Add(branch);
+            if (!branches.Contains("master", StringComparer.OrdinalIgnoreCase)) branches.Add("master");
             if (!branches.Contains("main", StringComparer.OrdinalIgnoreCase)) branches.Add("main");
 
             TryBranch(owner, repo, branches, 0, filePath, localVersion, onResult);

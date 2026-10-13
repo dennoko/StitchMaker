@@ -38,7 +38,7 @@ namespace Dennokoworks.StitchMaker
         // チェック先（設定されているリモートリポジトリに合わせる）
         internal const string RepoOwner       = "dennoko";
         internal const string RepoName        = "StitchMaker";
-        internal const string RepoBranch      = "main";
+        internal const string RepoBranch      = "master";
         internal const string VersionFilePath = "version.json";
 
         // セッションキー。State（比較結果）は保存しない — ローカル版が後から正しく解決され得るため、
