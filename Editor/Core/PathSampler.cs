@@ -20,6 +20,8 @@ namespace Dennokoworks.StitchMaker
         static readonly List<Vector3> points = new List<Vector3>();
         static readonly List<Vector3> normals = new List<Vector3>();
         static readonly List<float> distances = new List<float>();
+        // ミラー側のノード列を組み立てる作業用パス（毎回の割り当てを避ける）。
+        static readonly StitchPath mirrorScratch = new StitchPath();
 
         /// <summary>閉じたパスとして扱うか（ノード 3 個未満は開いたパスとみなす）。</summary>
         public static bool IsClosed(StitchPath path)
@@ -100,12 +102,107 @@ namespace Dennokoworks.StitchMaker
             }
         }
 
-        /// <summary>ステッチ配置（等間隔・ジッター・角度オフセット適用済み）を求める。</summary>
-        public static void Sample(StitchPath path, List<StitchSample> results, int seedOffset = 0)
+        /// <summary>対称軸の成分だけ符号を反転するスケール。</summary>
+        public static Vector3 MirrorScale(MirrorAxis axis)
+        {
+            switch (axis)
+            {
+                case MirrorAxis.X: return new Vector3(-1f, 1f, 1f);
+                case MirrorAxis.Y: return new Vector3(1f, -1f, 1f);
+                case MirrorAxis.Z: return new Vector3(1f, 1f, -1f);
+                default: return Vector3.one;
+            }
+        }
+
+        /// <summary>
+        /// ミラー側のパスを独立したパスとして作る（制御点を鏡映し、反対側の表面へ吸着済み）。
+        /// 設定は複製し、角度オフセットは鏡映に合わせて符号を反転する。
+        /// </summary>
+        public static StitchPath CreateMirroredPath(StitchPath source, MeshSnapshot snapshot)
+        {
+            var mirrored = new StitchPath
+            {
+                name = source.name,
+                visible = source.visible,
+                mask = source.mask,
+                settings = source.settings.Clone(),
+                mirrorSnapRadius = source.mirrorSnapRadius,
+            };
+            mirrored.settings.angleOffset = -source.settings.angleOffset;
+            MirrorNodes(source, snapshot, mirrored);
+            return mirrored;
+        }
+
+        /// <summary>ミラー側の折れ線（シーンビューのゴースト表示用）。ミラー OFF なら空になる。</summary>
+        public static void BuildMirroredPolyline(StitchPath path, MeshSnapshot snapshot, List<Vector3> results)
         {
             results.Clear();
-            var settings = path.settings;
+            if (path.mirrorAxis == MirrorAxis.None) return;
+            MirrorNodes(path, snapshot, mirrorScratch);
+            BuildPolyline(mirrorScratch, results, null);
+        }
+
+        /// <summary>
+        /// ステッチ配置（等間隔・ジッター・角度オフセット適用済み）を求める。
+        /// snapshot を渡すと、ミラーが有効なパスではミラー側の配置も続けて追加する。
+        /// </summary>
+        public static void Sample(StitchPath path, List<StitchSample> results, int seedOffset = 0,
+            MeshSnapshot snapshot = null)
+        {
+            results.Clear();
+            AppendSamples(path, path.settings, results, seedOffset, MirrorAxis.None);
+            if (path.mirrorAxis == MirrorAxis.None || snapshot == null) return;
+
+            // 単純な座標反転ではなく、吸着後のノード列を改めて等間隔に刻む（反対側の曲面でも間隔が保たれる）。
+            MirrorNodes(path, snapshot, mirrorScratch);
+            AppendSamples(mirrorScratch, path.settings, results, seedOffset, path.mirrorAxis);
+        }
+
+        // source の制御点を鏡映し、反対側の表面へ吸着させて target に書き込む。
+        static void MirrorNodes(StitchPath source, MeshSnapshot snapshot, StitchPath target)
+        {
+            target.closed = source.closed;
+            target.manualHandles = source.manualHandles;
+            target.mirrorAxis = MirrorAxis.None;
+
+            var scale = MirrorScale(source.mirrorAxis);
+            var nodes = target.nodes;
+            int count = source.nodes.Count;
+            if (nodes.Count > count) nodes.RemoveRange(count, nodes.Count - count);
+            while (nodes.Count < count) nodes.Add(new StitchNode());
+
+            for (int i = 0; i < count; i++)
+            {
+                var from = source.nodes[i];
+                var to = nodes[i];
+                to.position = Vector3.Scale(from.position, scale);
+                to.normal = Vector3.Scale(from.normal, scale).normalized;
+                to.handleIn = Vector3.Scale(from.handleIn, scale);
+                to.handleOut = Vector3.Scale(from.handleOut, scale);
+
+                if (snapshot == null || !snapshot.TrySnapToSurface(to.position, to.normal,
+                        source.mirrorSnapRadius, out var position, out var normal))
+                    continue;
+
+                // ハンドルは表面の傾きの変化に追従させる。
+                var rotation = Quaternion.FromToRotation(to.normal, normal);
+                to.handleIn = rotation * to.handleIn;
+                to.handleOut = rotation * to.handleOut;
+                to.position = position;
+                to.normal = normal;
+            }
+        }
+
+        // mirrorAxis が None 以外なら path はミラー側のノード列で、元パスと鏡像になるよう符号を反転して刻む。
+        static void AppendSamples(StitchPath path, StitchSettings settings, List<StitchSample> results,
+            int seedOffset, MirrorAxis mirrorAxis)
+        {
             if (settings.spacing < 1e-5f) return;
+            bool mirrored = mirrorAxis != MirrorAxis.None;
+            // 鏡映すると bitangent (= normal × tangent) と回転の向きが逆になる。
+            float sign = mirrored ? -1f : 1f;
+            var axis = Vector3.one - MirrorScale(mirrorAxis); // 対称軸の成分だけ 2、他は 0
+            float overlapLimit = settings.width * 0.25f;
 
             BuildPolyline(path, points, normals);
             if (points.Count < 2) return;
@@ -154,10 +251,14 @@ namespace Dennokoworks.StitchMaker
                 normal = (normal - tangent * Vector3.Dot(normal, tangent)).normalized;
                 if (tangent == Vector3.zero || normal == Vector3.zero) continue;
 
+                var onCurve = Vector3.Lerp(points[edge], points[edge + 1], f);
+                // 対称面上では元パスのステッチと重なるので、ミラー側を省いて二重焼きを防ぐ。
+                if (mirrored && Mathf.Abs(Vector3.Dot(onCurve, axis)) * 0.5f < overlapLimit) continue;
+
                 var bitangent = Vector3.Cross(normal, tangent);
-                var position = Vector3.Lerp(points[edge], points[edge + 1], f)
-                               + (tangent * randomT + bitangent * randomB) * settings.jitterPosition;
-                float angle = settings.angleOffset + randomAngle * settings.jitterAngle;
+                var position = onCurve
+                               + (tangent * randomT + bitangent * (randomB * sign)) * settings.jitterPosition;
+                float angle = (settings.angleOffset + randomAngle * settings.jitterAngle) * sign;
 
                 results.Add(new StitchSample
                 {
