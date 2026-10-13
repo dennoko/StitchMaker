@@ -8,13 +8,16 @@ namespace Dennokoworks.StitchMaker
     [Serializable]
     public class ExportSettings
     {
+        public const string FallbackFolder = "Assets/dennokoworks/StitchMakerData/Textures";
+
         public int resolution = 2048;
         public int padding = 4;
         public bool color = true;
         public bool normal = true;
         public bool height = true;
         public bool mask = true;
-        public string folder = "Assets/dennokoworks/StitchMakerData/Textures";
+        public bool overwrite = false;
+        public string folder = FallbackFolder;
     }
 
     /// <summary>編集対象のすべて（パス一覧 + 出力設定）。</summary>

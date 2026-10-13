@@ -130,6 +130,7 @@ namespace Dennokoworks.StitchMaker
             { "パディング (px)", "Padding (px)" },
             { "出力", "Output" },
             { "出力先", "Output Folder" },
+            { "上書き保存", "Overwrite" },
             { "テクスチャを出力", "Export Textures" },
 
             // ---- ウィンドウ（コードから設定する文言）
@@ -143,6 +144,7 @@ namespace Dennokoworks.StitchMaker
             { "英語で表示", "Display in English" },
             { "シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）", "Edit paths in the Scene view (objects cannot be selected while ON)" },
             { "対象の Renderer を解除", "Clear the assigned Renderer" },
+            { "同名ファイルが存在する場合に上書きする（OFF の場合は連番を付与）", "Overwrite existing files (append sequential numbers when OFF)" },
             { "表示 / 非表示（非表示のパスは出力されません）", "Show / hide (hidden paths are not exported)" },
             { "このパスを削除", "Delete this path" },
             { "同梱", "Built-in" },

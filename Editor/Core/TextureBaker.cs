@@ -108,12 +108,15 @@ namespace Dennokoworks.StitchMaker
         {
             if (Color == null) return;
             Directory.CreateDirectory(export.folder);
-            string prefix = export.folder.TrimEnd('/', '\\') + "/" + baseName + "_Stitch_";
+
+            string folder = export.folder.TrimEnd('/', '\\');
+            string suffix = GetUniqueSuffix(export, folder, baseName);
+            string prefix = folder + "/" + baseName + "_Stitch_";
 
             if (export.color)
             {
                 var texture = Read(Color, TextureFormat.RGBA32, false);
-                Write(prefix + "Color.png", texture, importer =>
+                Write(prefix + "Color" + suffix + ".png", texture, importer =>
                 {
                     importer.sRGBTexture = true;
                     importer.alphaIsTransparency = true;
@@ -122,18 +125,42 @@ namespace Dennokoworks.StitchMaker
             if (export.normal)
             {
                 var texture = Read(Normal, TextureFormat.RGB24, true);
-                Write(prefix + "Normal.png", texture, importer => importer.textureType = TextureImporterType.NormalMap);
+                Write(prefix + "Normal" + suffix + ".png", texture, importer => importer.textureType = TextureImporterType.NormalMap);
             }
             if (export.height)
             {
                 var texture = ReadGray(Height, false);
-                Write(prefix + "Height.png", texture, importer => importer.sRGBTexture = false);
+                Write(prefix + "Height" + suffix + ".png", texture, importer => importer.sRGBTexture = false);
             }
             if (export.mask)
             {
                 var texture = ReadGray(Color, true);
-                Write(prefix + "Mask.png", texture, importer => importer.sRGBTexture = false);
+                Write(prefix + "Mask" + suffix + ".png", texture, importer => importer.sRGBTexture = false);
             }
+        }
+
+        static string GetUniqueSuffix(ExportSettings export, string folder, string baseName)
+        {
+            if (export.overwrite) return "";
+
+            bool Exists(int n)
+            {
+                string s = n == 0 ? "" : " " + n;
+                if (export.color && File.Exists(Path.Combine(folder, baseName + "_Stitch_Color" + s + ".png"))) return true;
+                if (export.normal && File.Exists(Path.Combine(folder, baseName + "_Stitch_Normal" + s + ".png"))) return true;
+                if (export.height && File.Exists(Path.Combine(folder, baseName + "_Stitch_Height" + s + ".png"))) return true;
+                if (export.mask && File.Exists(Path.Combine(folder, baseName + "_Stitch_Mask" + s + ".png"))) return true;
+                return false;
+            }
+
+            if (!Exists(0)) return "";
+
+            int count = 1;
+            while (Exists(count))
+            {
+                count++;
+            }
+            return " " + count;
         }
 
         void EnsureTargets(int resolution)

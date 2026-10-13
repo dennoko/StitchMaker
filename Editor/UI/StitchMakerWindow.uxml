@@ -105,6 +105,7 @@
                     <ui:Toggle name="export-mask-toggle" text="Mask" class="stitch-inline-toggle" />
                 </ui:VisualElement>
             </ui:VisualElement>
+            <ui:Toggle name="export-overwrite-toggle" text="上書き保存" />
             <ui:VisualElement class="stitch-row">
                 <ui:TextField name="export-folder-field" label="出力先" class="stitch-grow" />
                 <ui:Button name="export-folder-button" text="..." class="stitch-icon-button" />

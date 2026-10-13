@@ -162,6 +162,7 @@ classDiagram
         +bool normal
         +bool height
         +bool mask
+        +bool overwrite
         +string folder
     }
     StitchDocument "1" *-- "many" StitchPath
@@ -199,7 +200,7 @@ classDiagram
 - **読込**: `Instantiate(asset)` を編集対象にする。アセット自体は編集しない。
 - 未保存の変更がある状態で「新規」「読込」を行う場合は確認ダイアログを出す（ウィンドウが `bool dirty` を保持）。
 - 対象 Renderer はシーン参照のためドキュメントには保存しない。読込後にユーザーが指定する。
-- `ExportSettings` の既定値: `resolution = 2048`、`padding = 4`、全マップ出力 ON、`folder = "Assets/dennokoworks/StitchMakerData/Textures"`。
+- `ExportSettings` の既定値: `resolution = 2048`、`padding = 4`、全マップ出力 ON、`overwrite = false`、`folder` は対象マテリアルのメインテクスチャの親フォルダ配下の `StitchMakerTexture`（メインテクスチャ未設定または Assets 外の場合はフォールバックとして `"Assets/dennokoworks/StitchMakerData/Textures"`）。
 
 ### 4.4 プリセット（`PresetStore`）
 - 保存先: `%APPDATA%/dennokoworks/StitchMaker/Presets/`（`Environment.SpecialFolder.ApplicationData`）。Unity プロジェクトをまたいで共有される。
@@ -497,7 +498,8 @@ Height = m × heightScale
 │   [x] プレビュー   表示: [ Combined ▼ ]                   │
 │   解像度: [ 2048 ▼ ]   パディング: [ 4 ] px              │
 │   出力:   [x] Color  [x] Normal  [x] Height  [x] Mask    │
-│   出力先: [ Assets/dennokoworks/StitchMakerData/… ] [...] │
+│   [ ] 上書き保存                                          │
+│   出力先: [ Assets/.../StitchMakerTexture           ] [...] │
 │   [ テクスチャを出力 ]                                    │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -527,9 +529,15 @@ Height = m × heightScale
 | `{Renderer名}_Stitch_Height.png` | グレースケール（0 = 地、255 = 最も高い） | sRGB OFF |
 | `{Renderer名}_Stitch_Mask.png` | グレースケール（Color の A と同じ） | sRGB OFF |
 
-- 解像度: 512 / 1024 / 2048 / 4096（正方形）。パディング: 0–16px。
-- 形式は PNG 8bit のみ。RenderTexture を `ReadPixels` → `EncodeToPNG` → `File.WriteAllBytes` → `AssetDatabase.ImportAsset`。
-- ファイル名は固定で、同名ファイルは確認なしで上書きする。再出力しても GUID が変わらないため、マテリアルへの割り当てが維持される。インポート設定は新規作成時のみ適用し、既存ファイルの設定は変更しない。
+- 出力先フォルダ:
+  - 既定値は対象 Renderer の対象 Material に割り当てられているメインテクスチャ（`_MainTex` / `_BaseMap`）の配置フォルダ配下の `StitchMakerTexture/`（存在しない場合は自動作成）。
+  - メインテクスチャ未設定またはプロジェクト外の場合はフォールバック先（`Assets/dennokoworks/StitchMakerData/Textures/`）を使用。
+  - 出力先パスは UI で手動変更可能。
+- 上書き保存（`overwrite`）:
+  - 既定値は OFF。
+  - **OFF の場合**: Unity 標準の重複回避ルールに準拠し、同名ファイルが存在するときはファイル名末尾に ` スペース＋連番`（例: `{Renderer名}_Stitch_Color 1.png`、`... 2.png`）を自動付与して保存。同時に出力される全マップで同じ連番が付与される。
+  - **ON の場合**: 既存ファイルを上書き保存（再出力時に GUID が維持され、マテリアルへの割り当てが保持される）。
+- インポート設定は新規作成時のみ適用し、既存ファイルの設定は変更しない。
 - 出力は現在のプレビューと同一の RenderTexture から行う（出力専用の再計算はしない）。
 
 ---

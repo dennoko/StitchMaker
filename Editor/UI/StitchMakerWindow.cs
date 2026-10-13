@@ -51,7 +51,7 @@ namespace Dennokoworks.StitchMaker
         DropdownField materialDropdown, resolutionDropdown;
         VisualElement pathList, settingsCard;
         Toggle closedToggle, bezierToggle, previewToggle;
-        Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle;
+        Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle, exportOverwriteToggle;
         TextField presetNameField, pathNameField, exportFolderField;
         ColorField threadColorField;
         IntegerField seedField;
@@ -131,6 +131,10 @@ namespace Dennokoworks.StitchMaker
             uxml.CloneTree(root);
 
             if (document == null) document = CreateDocument();
+            else if (target != null && document.export.folder == ExportSettings.FallbackFolder)
+            {
+                document.export.folder = GetDefaultExportFolder();
+            }
             InitializeUI(root);
             uiReady = true;
 
@@ -174,6 +178,7 @@ namespace Dennokoworks.StitchMaker
             {
                 target = evt.newValue as Renderer;
                 materialIndex = 0;
+                UpdateExportFolder();
                 RefreshSnapshot();
             });
             clearTargetButton = root.Q<Button>("clear-target-button");
@@ -182,12 +187,14 @@ namespace Dennokoworks.StitchMaker
                 target = null;
                 materialIndex = 0;
                 targetField.value = null;
+                UpdateExportFolder();
                 RefreshSnapshot();
             };
             materialDropdown = root.Q<DropdownField>("material-dropdown");
             materialDropdown.RegisterValueChangedCallback(evt =>
             {
                 materialIndex = Mathf.Max(0, materialDropdown.index);
+                UpdateExportFolder();
                 RefreshSnapshot();
             });
             refreshMeshButton = root.Q<Button>("refresh-mesh-button");
@@ -287,6 +294,7 @@ namespace Dennokoworks.StitchMaker
             exportNormalToggle = BindExportToggle(root, "export-normal-toggle", (export, v) => export.normal = v);
             exportHeightToggle = BindExportToggle(root, "export-height-toggle", (export, v) => export.height = v);
             exportMaskToggle = BindExportToggle(root, "export-mask-toggle", (export, v) => export.mask = v);
+            exportOverwriteToggle = BindExportToggle(root, "export-overwrite-toggle", (export, v) => export.overwrite = v);
             exportFolderField = root.Q<TextField>("export-folder-field");
             exportFolderField.isDelayed = true;
             exportFolderField.RegisterValueChangedCallback(evt => EditExport(export => export.folder = evt.newValue));
@@ -391,6 +399,8 @@ namespace Dennokoworks.StitchMaker
             langEnButton.tooltip = Loc.T("英語で表示");
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
             if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
+            if (exportOverwriteToggle != null)
+                exportOverwriteToggle.tooltip = Loc.T("同名ファイルが存在する場合に上書きする（OFF の場合は連番を付与）");
         }
 
         // ---------------------------------------------------------------- モデル → UI
@@ -443,6 +453,7 @@ namespace Dennokoworks.StitchMaker
             exportNormalToggle.SetValueWithoutNotify(export.normal);
             exportHeightToggle.SetValueWithoutNotify(export.height);
             exportMaskToggle.SetValueWithoutNotify(export.mask);
+            exportOverwriteToggle.SetValueWithoutNotify(export.overwrite);
             exportFolderField.SetValueWithoutNotify(export.folder);
         }
 
@@ -897,12 +908,52 @@ namespace Dennokoworks.StitchMaker
 
         // ---------------------------------------------------------------- ドキュメントの新規・読込・保存
 
-        static StitchDocument CreateDocument()
+        StitchDocument CreateDocument()
         {
             var created = CreateInstance<StitchDocument>();
             created.name = "StitchDocument";
             created.hideFlags = HideFlags.DontSave;
+            created.export.folder = GetDefaultExportFolder();
             return created;
+        }
+
+        string GetDefaultExportFolder()
+        {
+            if (target != null)
+            {
+                var materials = target.sharedMaterials;
+                if (materialIndex >= 0 && materialIndex < materials.Length)
+                {
+                    var mat = materials[materialIndex];
+                    if (mat != null)
+                    {
+                        Texture mainTex = mat.mainTexture;
+                        if (mainTex == null)
+                        {
+                            if (mat.HasProperty("_MainTex")) mainTex = mat.GetTexture("_MainTex");
+                            else if (mat.HasProperty("_BaseMap")) mainTex = mat.GetTexture("_BaseMap");
+                        }
+                        if (mainTex != null)
+                        {
+                            string texPath = AssetDatabase.GetAssetPath(mainTex);
+                            if (!string.IsNullOrEmpty(texPath) && texPath.StartsWith("Assets"))
+                            {
+                                string dir = Path.GetDirectoryName(texPath).Replace('\\', '/');
+                                return dir + "/StitchMakerTexture";
+                            }
+                        }
+                    }
+                }
+            }
+            return ExportSettings.FallbackFolder;
+        }
+
+        void UpdateExportFolder()
+        {
+            if (document == null) return;
+            string defaultFolder = GetDefaultExportFolder();
+            EditExport(export => export.folder = defaultFolder);
+            exportFolderField?.SetValueWithoutNotify(defaultFolder);
         }
 
         bool ConfirmDiscard()
