@@ -181,6 +181,20 @@ namespace Dennokoworks.StitchMaker
             { "パスを保存しました: {0}", "Paths saved: {0}" },
             { "UXML が見つかりません。GUID を確認してください。", "UXML asset not found. Check the GUID." },
 
+            // ---- ミラー
+            { "ミラー軸", "Mirror Axis" },
+            { "吸着半径 (mm)", "Snap Radius (mm)" },
+            { "独立パスとして実体化", "Bake Mirror to Path" },
+            { "※左右で UV アイランドを共有（重ねて配置）しているメッシュでは、ミラーを OFF にしてください。",
+              "* Turn the mirror OFF for meshes whose left and right sides share (overlap) the same UV islands." },
+            { "メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）",
+              "Also draws the same stitches on the opposite side of the chosen axis in the mesh's local space (turn OFF for meshes whose sides overlap in UV)" },
+            { "反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）",
+              "Distance within which mirrored control points snap to the opposite surface, for meshes that are not perfectly symmetric (0 disables snapping)" },
+            { "ミラー側を個別に編集できる新しいパスに変換し、このパスのミラーを解除する",
+              "Converts the mirrored side into a new path that can be edited on its own, and turns the mirror off for this path" },
+            { "ミラーを独立パスとして実体化しました: {0}", "Mirror baked to path: {0}" },
+
             // ---- シーンビューの操作ガイド
             { "パス編集モード", "Path Edit Mode" },
             { "左クリック：制御点を追加", "Left Click: Add control point" },

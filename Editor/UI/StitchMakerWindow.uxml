@@ -81,6 +81,12 @@
             <ui:Slider name="jitter-position-slider" label="ゆらぎ・位置 (mm)" low-value="0" high-value="2" show-input-field="true" />
             <ui:Slider name="jitter-angle-slider" label="ゆらぎ・角度 (°)" low-value="0" high-value="30" show-input-field="true" />
             <ui:IntegerField name="seed-field" label="Seed" />
+            <ui:VisualElement class="dennoko-separator" />
+            <!-- ミラー（パスごとの設定。プリセットには含まれない） -->
+            <ui:DropdownField name="path-mirror-axis" label="ミラー軸" />
+            <ui:FloatField name="path-mirror-snap-radius" label="吸着半径 (mm)" />
+            <ui:Button name="path-bake-mirror-button" text="独立パスとして実体化" class="dennoko-button-secondary" />
+            <ui:Label name="mirror-note" text="※左右で UV アイランドを共有（重ねて配置）しているメッシュでは、ミラーを OFF にしてください。" class="stitch-message" />
             <ui:Label name="mask-warning" text="マスクが未設定のパスは描画されません。" class="stitch-message stitch-message--warning" />
         </ui:VisualElement>
 

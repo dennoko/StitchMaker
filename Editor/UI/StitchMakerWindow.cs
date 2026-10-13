@@ -21,6 +21,7 @@ namespace Dennokoworks.StitchMaker
         const string HiddenClass = "stitch-hidden";
 
         static readonly List<string> ResolutionChoices = new List<string> { "512", "1024", "2048", "4096" };
+        static readonly List<string> MirrorAxisChoices = new List<string> { "None", "X", "Y", "Z" };
 
         public enum StatusType { Info, Success, Error }
 
@@ -55,6 +56,10 @@ namespace Dennokoworks.StitchMaker
         TextField presetNameField, pathNameField, exportFolderField;
         ColorField threadColorField;
         IntegerField seedField;
+        DropdownField mirrorAxisDropdown;
+        FloatField mirrorSnapField;
+        Button bakeMirrorButton;
+        Label mirrorNote;
         SliderInt paddingSlider;
         // 選択中パスの設定値をコントロールへ流し込む処理（スライダーごとに 1 つ）
         readonly List<Action<StitchSettings>> settingsRefreshers = new List<Action<StitchSettings>>();
@@ -266,6 +271,22 @@ namespace Dennokoworks.StitchMaker
             seedField.RegisterValueChangedCallback(evt =>
                 EditPath("Edit Stitch Settings", path => path.settings.seed = evt.newValue));
 
+            // ミラー。選択肢の並びは MirrorAxis の値と一致させる。
+            mirrorAxisDropdown = root.Q<DropdownField>("path-mirror-axis");
+            mirrorAxisDropdown.choices = MirrorAxisChoices;
+            mirrorAxisDropdown.RegisterValueChangedCallback(evt =>
+            {
+                EditPath("Edit Stitch Mirror", path => path.mirrorAxis = (MirrorAxis)Mathf.Max(0, mirrorAxisDropdown.index));
+                RefreshMirrorControls();
+            });
+            // 表示は mm、データはメートル。
+            mirrorSnapField = root.Q<FloatField>("path-mirror-snap-radius");
+            mirrorSnapField.RegisterValueChangedCallback(evt =>
+                EditPath("Edit Stitch Mirror", path => path.mirrorSnapRadius = Mathf.Max(0f, evt.newValue) / 1000f));
+            bakeMirrorButton = root.Q<Button>("path-bake-mirror-button");
+            bakeMirrorButton.clicked += BakeMirrorToPath;
+            mirrorNote = root.Q<Label>("mirror-note");
+
             // プレビュー・出力
             previewToggle = root.Q<Toggle>("preview-toggle");
             previewToggle.RegisterValueChangedCallback(evt =>
@@ -367,6 +388,29 @@ namespace Dennokoworks.StitchMaker
             RefreshUI();
         }
 
+        /// <summary>ミラー側を独立したパスとして追加し、元パスのミラーを解除する。</summary>
+        void BakeMirrorToPath()
+        {
+            var path = SelectedPath;
+            if (path == null || path.mirrorAxis == MirrorAxis.None) return;
+            EnsureSnapshot();
+            if (snapshot == null)
+            {
+                SetStatus(Loc.T(snapshotError ?? "対象メッシュを取得できません。"), StatusType.Error);
+                return;
+            }
+
+            Undo.RecordObject(document, "Bake Stitch Mirror to Path");
+            var mirrored = PathSampler.CreateMirroredPath(path, snapshot);
+            mirrored.name = path.name + " (Mirror)";
+            path.mirrorAxis = MirrorAxis.None;
+            document.paths.Add(mirrored);
+            SelectPath(document.paths.Count - 1);
+            MarkChanged();
+            RefreshUI();
+            SetStatus(Loc.F("ミラーを独立パスとして実体化しました: {0}", mirrored.name), StatusType.Success);
+        }
+
         void SelectPath(int index)
         {
             selectedPath = index;
@@ -399,6 +443,9 @@ namespace Dennokoworks.StitchMaker
             langEnButton.tooltip = Loc.T("英語で表示");
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
             if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
+            mirrorAxisDropdown.tooltip = Loc.T("メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）");
+            mirrorSnapField.tooltip = Loc.T("反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）");
+            bakeMirrorButton.tooltip = Loc.T("ミラー側を個別に編集できる新しいパスに変換し、このパスのミラーを解除する");
             if (exportOverwriteToggle != null)
                 exportOverwriteToggle.tooltip = Loc.T("同名ファイルが存在する場合に上書きする（OFF の場合は連番を付与）");
         }
@@ -438,7 +485,11 @@ namespace Dennokoworks.StitchMaker
                 threadColorField.SetValueWithoutNotify(path.settings.threadColor);
                 seedField.SetValueWithoutNotify(path.settings.seed);
                 foreach (var refresh in settingsRefreshers) refresh(path.settings);
+                mirrorAxisDropdown.SetValueWithoutNotify(
+                    MirrorAxisChoices[Mathf.Clamp((int)path.mirrorAxis, 0, MirrorAxisChoices.Count - 1)]);
+                mirrorSnapField.SetValueWithoutNotify(path.mirrorSnapRadius * 1000f);
             }
+            RefreshMirrorControls();
             RefreshMaskWarning();
 
             previewToggle.SetValueWithoutNotify(previewOn);
@@ -489,6 +540,16 @@ namespace Dennokoworks.StitchMaker
             targetMessage.text = message ?? "";
             targetMessage.EnableInClassList(HiddenClass, message == null);
             targetMessage.EnableInClassList("stitch-message--error", target != null && snapshotError != null);
+        }
+
+        // 吸着半径・実体化ボタン・注記はミラー有効時だけ意味を持つ。
+        void RefreshMirrorControls()
+        {
+            var path = SelectedPath;
+            bool mirrored = path != null && path.mirrorAxis != MirrorAxis.None;
+            mirrorSnapField.SetEnabled(mirrored);
+            bakeMirrorButton.EnableInClassList(HiddenClass, !mirrored);
+            mirrorNote.EnableInClassList(HiddenClass, !mirrored);
         }
 
         void RefreshMaskWarning()
