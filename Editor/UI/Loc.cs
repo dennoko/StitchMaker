@@ -131,6 +131,7 @@ namespace Dennokoworks.StitchMaker
             { "出力", "Output" },
             { "出力先", "Output Folder" },
             { "上書き保存", "Overwrite" },
+            { "ステッチ以外を透過", "Transparent Outside Stitches" },
             { "テクスチャを出力", "Export Textures" },
 
             // ---- ウィンドウ（コードから設定する文言）
@@ -180,6 +181,9 @@ namespace Dennokoworks.StitchMaker
             { "保存先を指定してください。", "Choose where to save." },
             { "パスを保存しました: {0}", "Paths saved: {0}" },
             { "UXML が見つかりません。GUID を確認してください。", "UXML asset not found. Check the GUID." },
+
+            { "Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）",
+              "Also exports Normal / Height with everything except the stitches transparent (Color is always transparent; Mask is unaffected)" },
 
             // ---- ミラー
             { "ミラー軸", "Mirror Axis" },

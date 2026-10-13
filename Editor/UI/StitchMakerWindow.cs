@@ -53,6 +53,7 @@ namespace Dennokoworks.StitchMaker
         VisualElement pathList, settingsCard;
         Toggle closedToggle, bezierToggle, previewToggle;
         Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle, exportOverwriteToggle;
+        Toggle exportTransparentToggle;
         TextField presetNameField, pathNameField, exportFolderField;
         ColorField threadColorField;
         IntegerField seedField;
@@ -316,6 +317,7 @@ namespace Dennokoworks.StitchMaker
             exportHeightToggle = BindExportToggle(root, "export-height-toggle", (export, v) => export.height = v);
             exportMaskToggle = BindExportToggle(root, "export-mask-toggle", (export, v) => export.mask = v);
             exportOverwriteToggle = BindExportToggle(root, "export-overwrite-toggle", (export, v) => export.overwrite = v);
+            exportTransparentToggle = BindExportToggle(root, "export-transparent-toggle", (export, v) => export.transparent = v);
             exportFolderField = root.Q<TextField>("export-folder-field");
             exportFolderField.isDelayed = true;
             exportFolderField.RegisterValueChangedCallback(evt => EditExport(export => export.folder = evt.newValue));
@@ -443,6 +445,7 @@ namespace Dennokoworks.StitchMaker
             langEnButton.tooltip = Loc.T("英語で表示");
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
             if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
+            exportTransparentToggle.tooltip = Loc.T("Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）");
             mirrorAxisDropdown.tooltip = Loc.T("メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）");
             mirrorSnapField.tooltip = Loc.T("反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）");
             bakeMirrorButton.tooltip = Loc.T("ミラー側を個別に編集できる新しいパスに変換し、このパスのミラーを解除する");
@@ -505,6 +508,7 @@ namespace Dennokoworks.StitchMaker
             exportHeightToggle.SetValueWithoutNotify(export.height);
             exportMaskToggle.SetValueWithoutNotify(export.mask);
             exportOverwriteToggle.SetValueWithoutNotify(export.overwrite);
+            exportTransparentToggle.SetValueWithoutNotify(export.transparent);
             exportFolderField.SetValueWithoutNotify(export.folder);
         }
 

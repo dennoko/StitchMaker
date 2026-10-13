@@ -17,6 +17,8 @@ namespace Dennokoworks.StitchMaker
         public bool height = true;
         public bool mask = true;
         public bool overwrite = false;
+        // Normal / Height もステッチ以外を透過にして書き出す（Color は常に透過）。
+        public bool transparent = false;
         public string folder = FallbackFolder;
     }
 

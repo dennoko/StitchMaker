@@ -113,6 +113,15 @@ namespace Dennokoworks.StitchMaker
             string suffix = GetUniqueSuffix(export, folder, baseName);
             string prefix = folder + "/" + baseName + "_Stitch_";
 
+            // 透過出力では Color の A（被覆率）を Normal / Height のアルファにも使う。
+            Color32[] coverage = null;
+            if (export.transparent && (export.normal || export.height))
+            {
+                var color = Read(Color, TextureFormat.RGBA32, false);
+                coverage = color.GetPixels32();
+                UnityEngine.Object.DestroyImmediate(color);
+            }
+
             if (export.color)
             {
                 var texture = Read(Color, TextureFormat.RGBA32, false);
@@ -124,13 +133,24 @@ namespace Dennokoworks.StitchMaker
             }
             if (export.normal)
             {
-                var texture = Read(Normal, TextureFormat.RGB24, true);
+                var texture = Read(Normal, coverage != null ? TextureFormat.RGBA32 : TextureFormat.RGB24, true);
+                if (coverage != null)
+                {
+                    var pixels = texture.GetPixels32();
+                    for (int i = 0; i < pixels.Length; i++) pixels[i].a = coverage[i].a;
+                    texture.SetPixels32(pixels);
+                    texture.Apply();
+                }
                 Write(prefix + "Normal" + suffix + ".png", texture, importer => importer.textureType = TextureImporterType.NormalMap);
             }
             if (export.height)
             {
-                var texture = ReadGray(Height, false);
-                Write(prefix + "Height" + suffix + ".png", texture, importer => importer.sRGBTexture = false);
+                var texture = ReadGray(Height, false, coverage);
+                Write(prefix + "Height" + suffix + ".png", texture, importer =>
+                {
+                    importer.sRGBTexture = false;
+                    importer.alphaIsTransparency = export.transparent;
+                });
             }
             if (export.mask)
             {
@@ -244,8 +264,8 @@ namespace Dennokoworks.StitchMaker
             return texture;
         }
 
-        // 1 チャンネル（R または A）をグレースケールの RGB24 として読む。
-        static Texture2D ReadGray(RenderTexture source, bool fromAlpha)
+        // 1 チャンネル（R または A）をグレースケールとして読む。coverage を渡すと、その A をアルファにした RGBA32 になる。
+        static Texture2D ReadGray(RenderTexture source, bool fromAlpha, Color32[] coverage = null)
         {
             var rgba = Read(source, TextureFormat.RGBA32, true);
             var pixels = rgba.GetPixels32();
@@ -253,9 +273,10 @@ namespace Dennokoworks.StitchMaker
             for (int i = 0; i < pixels.Length; i++)
             {
                 byte value = fromAlpha ? pixels[i].a : pixels[i].r;
-                pixels[i] = new Color32(value, value, value, 255);
+                pixels[i] = new Color32(value, value, value, coverage != null ? coverage[i].a : (byte)255);
             }
-            var gray = new Texture2D(source.width, source.height, TextureFormat.RGB24, false, true);
+            var format = coverage != null ? TextureFormat.RGBA32 : TextureFormat.RGB24;
+            var gray = new Texture2D(source.width, source.height, format, false, true);
             gray.SetPixels32(pixels);
             gray.Apply();
             return gray;
