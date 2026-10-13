@@ -335,7 +335,7 @@ public class StitchMakerWindow : EditorWindow
     // 非シリアライズ（OnEnable / 必要時に再生成）
     //   MeshSnapshot snapshot; TextureBaker baker; bool needsRebuild;
 
-    [MenuItem("Window/dennokoworks/StitchMaker")] static void Open();
+    [MenuItem("dennokoworks/StitchMaker")] static void Open();
     void OnEnable();    // SceneView.duringSceneGui / Undo.undoRedoPerformed を購読
     void OnDisable();   // 購読解除、Tools.hidden を戻す、snapshot / baker を Dispose
     void OnGUI();       // §8 の UI。値変更時に Undo.RecordObject → needsRebuild = true

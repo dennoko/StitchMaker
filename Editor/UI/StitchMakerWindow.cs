@@ -72,7 +72,7 @@ namespace Dennokoworks.StitchMaker
             LocalVersion = "0.0.0",
         };
 
-        [MenuItem("Window/dennokoworks/StitchMaker")]
+        [MenuItem("dennokoworks/StitchMaker")]
         public static void ShowWindow()
         {
             var window = GetWindow<StitchMakerWindow>();
