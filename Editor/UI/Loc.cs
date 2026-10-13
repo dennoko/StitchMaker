@@ -96,6 +96,7 @@ namespace Dennokoworks.StitchMaker
         {
             // ---- UXML
             { "対象", "TARGET" },
+            { "クリア", "Clear" },
             { "メッシュを再取得", "Reload Mesh" },
             { "パス", "PATHS" },
             { "新規", "New" },
@@ -141,6 +142,7 @@ namespace Dennokoworks.StitchMaker
             { "日本語で表示", "Display in Japanese" },
             { "英語で表示", "Display in English" },
             { "シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）", "Edit paths in the Scene view (objects cannot be selected while ON)" },
+            { "対象の Renderer を解除", "Clear the assigned Renderer" },
             { "表示 / 非表示（非表示のパスは出力されません）", "Show / hide (hidden paths are not exported)" },
             { "このパスを削除", "Delete this path" },
             { "同梱", "Built-in" },

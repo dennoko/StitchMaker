@@ -45,6 +45,7 @@ namespace Dennokoworks.StitchMaker
         Label statusLabel, versionLabel, targetMessage, maskWarning;
         IVisualElementScheduledItem statusResetSchedule;
         Button langJaButton, langEnButton, reloadButton, editModeButton;
+        Button clearTargetButton, refreshMeshButton;
         Button previewCombinedButton, previewNormalButton, previewHeightButton;
         ObjectField targetField, maskField;
         DropdownField materialDropdown, resolutionDropdown;
@@ -175,13 +176,22 @@ namespace Dennokoworks.StitchMaker
                 materialIndex = 0;
                 RefreshSnapshot();
             });
+            clearTargetButton = root.Q<Button>("clear-target-button");
+            clearTargetButton.clicked += () =>
+            {
+                target = null;
+                materialIndex = 0;
+                targetField.value = null;
+                RefreshSnapshot();
+            };
             materialDropdown = root.Q<DropdownField>("material-dropdown");
             materialDropdown.RegisterValueChangedCallback(evt =>
             {
                 materialIndex = Mathf.Max(0, materialDropdown.index);
                 RefreshSnapshot();
             });
-            root.Q<Button>("refresh-mesh-button").clicked += RefreshSnapshot;
+            refreshMeshButton = root.Q<Button>("refresh-mesh-button");
+            refreshMeshButton.clicked += RefreshSnapshot;
             targetMessage = root.Q<Label>("target-message");
 
             // パス
@@ -380,6 +390,7 @@ namespace Dennokoworks.StitchMaker
             langJaButton.tooltip = Loc.T("日本語で表示");
             langEnButton.tooltip = Loc.T("英語で表示");
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
+            if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
         }
 
         // ---------------------------------------------------------------- モデル → UI
@@ -394,6 +405,8 @@ namespace Dennokoworks.StitchMaker
             langEnButton.EnableInClassList(ActiveClass, Loc.IsEnglish);
 
             targetField.SetValueWithoutNotify(target);
+            clearTargetButton?.SetEnabled(target != null);
+            refreshMeshButton?.SetEnabled(target != null);
             RefreshMaterialDropdown();
             RefreshTargetMessage();
 
