@@ -71,7 +71,7 @@ namespace Dennokoworks.StitchMaker
                 var path = document.paths[i];
                 if (!path.visible || path.mask == null || path.nodes.Count < 2) continue;
 
-                PathSampler.Sample(path, samples, i);
+                PathSampler.Sample(path, samples, i, snapshot);
                 if (samples.Count == 0) continue;
                 DecalMeshBuilder.Build(snapshot, path.settings, samples, decalMesh);
 

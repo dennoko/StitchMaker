@@ -21,6 +21,7 @@ namespace Dennokoworks.StitchMaker
         static readonly int ControlHash = "StitchMakerPathEditor".GetHashCode();
         static readonly Color SelectedPathColor = new Color(0.2f, 0.9f, 1f, 1f);
         static readonly Color OtherPathColor = new Color(0.2f, 0.9f, 1f, 0.35f);
+        static readonly Color MirrorPathColor = new Color(0.2f, 0.9f, 1f, 0.4f);
         static readonly Color NodeColor = Color.white;
         static readonly Color SelectedNodeColor = new Color(1f, 0.85f, 0.1f, 1f);
         static readonly Color HandleColor = new Color(1f, 0.4f, 0.8f, 1f);
@@ -87,7 +88,7 @@ namespace Dennokoworks.StitchMaker
                         break;
 
                     case EventType.Repaint:
-                        Draw(document, selectedPath, selectedNode);
+                        Draw(document, snapshot, selectedPath, selectedNode);
                         break;
                 }
             }
@@ -254,7 +255,7 @@ namespace Dennokoworks.StitchMaker
             Event.current.Use();
         }
 
-        static void Draw(StitchDocument document, int selectedPath, int selectedNode)
+        static void Draw(StitchDocument document, MeshSnapshot snapshot, int selectedPath, int selectedNode)
         {
             for (int i = 0; i < document.paths.Count; i++)
             {
@@ -269,6 +270,15 @@ namespace Dennokoworks.StitchMaker
                     Handles.color = i == selectedPath ? SelectedPathColor : OtherPathColor;
                     Handles.DrawAAPolyLine(i == selectedPath ? 3f : 2f, polyline.Count, lineBuffer);
                 }
+
+                // ミラー側は元パスの従属物なので、線だけを薄く描く（ノードは出さず、編集も受け付けない）。
+                if (path.mirrorAxis == MirrorAxis.None) continue;
+                PathSampler.BuildMirroredPolyline(path, snapshot, polyline);
+                if (polyline.Count < 2) continue;
+                if (lineBuffer.Length < polyline.Count) lineBuffer = new Vector3[polyline.Count];
+                polyline.CopyTo(lineBuffer);
+                Handles.color = MirrorPathColor;
+                Handles.DrawAAPolyLine(2f, polyline.Count, lineBuffer);
             }
 
             var selected = GetPath(document, selectedPath);
