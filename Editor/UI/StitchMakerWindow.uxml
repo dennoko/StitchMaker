@@ -85,13 +85,12 @@
         <!-- プレビュー・出力 -->
         <ui:VisualElement class="dennoko-card">
             <ui:Label text="プレビュー・出力" class="dennoko-section-title dennoko-card-header" />
-            <ui:VisualElement class="stitch-row">
-                <ui:Toggle name="preview-toggle" text="プレビュー" class="stitch-fixed" />
-                <ui:VisualElement class="stitch-row stitch-grow stitch-inline-toggle stitch-no-loc">
-                    <ui:Button name="preview-combined-button" text="Combined" class="stitch-grow" />
-                    <ui:Button name="preview-normal-button" text="Normal" class="stitch-grow" />
-                    <ui:Button name="preview-height-button" text="Height" class="stitch-grow" />
-                </ui:VisualElement>
+            <ui:Toggle name="preview-toggle" text="プレビュー" />
+            <!-- 表示モード。3 つのボタンが行の幅を等分する -->
+            <ui:VisualElement class="stitch-segment-row stitch-no-loc">
+                <ui:Button name="preview-combined-button" text="Combined" class="stitch-segment" />
+                <ui:Button name="preview-normal-button" text="Normal" class="stitch-segment" />
+                <ui:Button name="preview-height-button" text="Height" class="stitch-segment" />
             </ui:VisualElement>
             <ui:DropdownField name="resolution-dropdown" label="解像度" />
             <ui:SliderInt name="padding-slider" label="パディング (px)" low-value="0" high-value="16" show-input-field="true" />

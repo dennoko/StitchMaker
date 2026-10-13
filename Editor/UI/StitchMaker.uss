@@ -88,3 +88,25 @@
     font-size: 10px;
     padding: 0;
 }
+
+/* 行の幅を等分するボタン群（モード切替など）。
+   flex-basis: 0 で文字幅に関係なく等分し、狭いときは文字側を切り詰める。 */
+.dennoko-root .stitch-segment-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 2px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+}
+
+.dennoko-root .unity-button.stitch-segment {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 0;
+    margin-left: 2px;
+    margin-right: 2px;
+    padding-left: 4px;
+    padding-right: 4px;
+    overflow: hidden;
+}

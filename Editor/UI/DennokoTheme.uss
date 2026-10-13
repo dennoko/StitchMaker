@@ -30,6 +30,7 @@
 
     /* インタラクション */
     --dennoko-accent: #ffffff;                          /* アクセントカラー */
+    --dennoko-checkmark: #777777;                       /* チェックボックスのチェックマーク (白背景上) */
     /* ホバー時の重ね色 (予約: この USS 内では未使用。C# から動的に半透明レイヤーを
        重ねる場合などに使う。不要ならプロジェクト側で削除してよい) */
     --dennoko-hover-overlay: rgba(255, 255, 255, 0.05);
@@ -250,10 +251,14 @@
 }
 
 .dennoko-root .unity-toggle:checked .unity-toggle__checkmark {
-    /* チェックグリフのみのアイコンをダークグレー tint (乗算) で重ねる。
-       白背景 × ダークグレーなのでテーマ非依存で自然に視認できる。 */
+    /* チェックグリフのみのアイコンをグレー tint (乗算) で重ねる。
+       白背景 × グレーなのでテーマ非依存で自然に視認できる。
+       ⚠ Surface 系の暗色を使うとほぼ黒になり、重く見える。 */
     background-image: resource("d_checkmark");
-    -unity-background-image-tint-color: var(--dennoko-surface-2);
+    -unity-background-image-tint-color: var(--dennoko-checkmark);
+    /* 箱いっぱいに描くと線が太く重く見えるため、少し小さく表示する
+       (線幅は画像に焼き込まれており、縮小でしか細くできない)。 */
+    background-size: 80% 80%;
 }
 
 /* ─── ⑤ フォールドアウト (Foldout) ───────────────────────── */
@@ -281,6 +286,7 @@
 .dennoko-root .unity-foldout__toggle:hover .unity-toggle__checkmark {
     background-color: transparent;
     border-width: 0;
+    background-size: initial; /* ④ のチェックマーク縮小を展開矢印に持ち込まない */
     -unity-background-image-tint-color: var(--dennoko-text-secondary);
 }
 
