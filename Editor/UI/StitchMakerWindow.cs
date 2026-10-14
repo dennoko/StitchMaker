@@ -18,6 +18,10 @@ namespace Dennokoworks.StitchMaker
         const string USS_GUID = "aca43ac834414adca1b2ffa76ae1cf32";
 
         const string ActiveClass = "dennoko-button-active";
+
+        // パス一覧の右クリックでコピーしたステッチ設定。ウィンドウをまたいで使えるよう static にする。
+        static StitchSettings copiedSettings;
+        static Texture2D copiedMask;
         const string HiddenClass = "stitch-hidden";
 
         static readonly List<string> ResolutionChoices = new List<string> { "512", "1024", "2048", "4096" };
@@ -388,6 +392,49 @@ namespace Dennokoworks.StitchMaker
             RefreshUI();
         }
 
+        // パス一覧の行の右クリックメニュー。
+        void PopulatePathMenu(ContextualMenuPopulateEvent evt, int index)
+        {
+            evt.menu.AppendAction(Loc.T("複製"), _ => DuplicatePath(index));
+            evt.menu.AppendSeparator();
+            evt.menu.AppendAction(Loc.T("ステッチ設定をコピー"), _ => CopyStitchSettings(index));
+            evt.menu.AppendAction(Loc.T("ステッチ設定を貼り付け"), _ => PasteStitchSettings(index),
+                _ => copiedSettings != null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void DuplicatePath(int index)
+        {
+            if (document == null || index < 0 || index >= document.paths.Count) return;
+            Undo.RecordObject(document, "Duplicate Stitch Path");
+            var copy = document.DuplicatePath(index);
+            SelectPath(index + 1);
+            MarkChanged();
+            RefreshUI();
+            SetStatus(Loc.F("パスを複製しました: {0}", copy.name), StatusType.Success);
+        }
+
+        // ステッチ設定（マスクを含む。形状とミラー設定は含まない）をウィンドウ内のクリップボードへ写す。
+        void CopyStitchSettings(int index)
+        {
+            if (document == null || index < 0 || index >= document.paths.Count) return;
+            var path = document.paths[index];
+            copiedSettings = path.settings.Clone();
+            copiedMask = path.mask;
+            SetStatus(Loc.F("ステッチ設定をコピーしました: {0}", path.name), StatusType.Success);
+        }
+
+        void PasteStitchSettings(int index)
+        {
+            if (document == null || copiedSettings == null || index < 0 || index >= document.paths.Count) return;
+            var path = document.paths[index];
+            Undo.RecordObject(document, "Paste Stitch Settings");
+            path.settings = copiedSettings.Clone();
+            path.mask = copiedMask;
+            MarkChanged();
+            RefreshUI();
+            SetStatus(Loc.F("ステッチ設定を貼り付けました: {0}", path.name), StatusType.Success);
+        }
+
         void DeletePath(int index)
         {
             if (document == null || index < 0 || index >= document.paths.Count) return;
@@ -618,6 +665,7 @@ namespace Dennokoworks.StitchMaker
                 row.Add(visible);
                 row.Add(select);
                 row.Add(delete);
+                row.AddManipulator(new ContextualMenuManipulator(evt => PopulatePathMenu(evt, index)));
                 pathList.Add(row);
             }
         }

@@ -46,6 +46,35 @@ namespace Dennokoworks.StitchMaker
             return path;
         }
 
+        /// <summary>パスを形状・設定ごと複製し、元のパスの直後に挿入する。</summary>
+        public StitchPath DuplicatePath(int index)
+        {
+            var source = paths[index];
+            var copy = new StitchPath
+            {
+                name = source.name + " (Copy)",
+                visible = source.visible,
+                closed = source.closed,
+                manualHandles = source.manualHandles,
+                mirrorAxis = source.mirrorAxis,
+                mirrorSnapRadius = source.mirrorSnapRadius,
+                mask = source.mask,
+                settings = source.settings.Clone(),
+            };
+            foreach (var node in source.nodes)
+            {
+                copy.nodes.Add(new StitchNode
+                {
+                    position = node.position,
+                    normal = node.normal,
+                    handleIn = node.handleIn,
+                    handleOut = node.handleOut,
+                });
+            }
+            paths.Insert(index + 1, copy);
+            return copy;
+        }
+
         static Texture2D FindDefaultMask()
         {
             foreach (var guid in AssetDatabase.FindAssets("Straight t:Texture2D"))

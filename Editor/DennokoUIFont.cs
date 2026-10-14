@@ -47,7 +47,8 @@ namespace Dennokoworks.StitchMaker
             "強形得応感成択指描敗文新日更書最有未本梱棄殊準点版特理用画破確示端糸編置色英表装" +
             "見規角解言設認語読象済質込追適選長閉間除隔集非頂飾高えけっとめケ倍値各大掛比率目項（）？" +
             "も傾地壁布沿深溝" +
-            "ラ場所矩空：";
+            "ラ場所矩空：" +
+            "ピ付製複貼";
 
         private static FontAsset _font;
         private static bool _unavailable;     // 未搭載環境。CreateFontAsset を再試行しない
