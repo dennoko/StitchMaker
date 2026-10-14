@@ -129,11 +129,12 @@ namespace Dennokoworks.StitchMaker
                 if (!path.visible || path.mask == null || path.nodes.Count < 2) continue;
 
                 var settings = path.settings;
-                if (settings.HasGroove) DrawGroove(snapshot, path);
+                var islands = IslandFilter.Collect(path, snapshot);
+                if (settings.HasGroove) DrawGroove(snapshot, path, islands);
 
                 PathSampler.Sample(path, samples, i, snapshot);
                 if (samples.Count == 0) continue;
-                DecalMeshBuilder.Build(snapshot, settings, samples, decalMesh);
+                DecalMeshBuilder.Build(snapshot, settings, samples, islands, decalMesh);
 
                 float k = settings.normalStrength;
                 float aspect = settings.width / Mathf.Max(settings.length, 1e-6f);
@@ -160,13 +161,13 @@ namespace Dennokoworks.StitchMaker
         }
 
         // 溝は幅の半分ごとに区切り、隣と半分ずつ重なる四角形で途切れなく覆う。
-        void DrawGroove(MeshSnapshot snapshot, StitchPath path)
+        void DrawGroove(MeshSnapshot snapshot, StitchPath path, bool[] islands)
         {
             float width = path.settings.ScaledGrooveWidth;
             float step = width * 0.5f;
             PathSampler.SampleGroove(path, step, samples, snapshot);
             if (samples.Count == 0) return;
-            DecalMeshBuilder.Build(snapshot, step * 2f, width, samples, decalMesh);
+            DecalMeshBuilder.Build(snapshot, step * 2f, width, samples, islands, decalMesh);
 
             material.SetColor(ColorId, path.settings.threadColor);
             material.SetFloat(GrooveDepthId, path.settings.grooveDepth);

@@ -6,6 +6,7 @@ namespace Dennokoworks.StitchMaker
     /// <summary>
     /// ステッチごとに近傍三角形を集め、UV を描画位置・ステッチ基準座標を頂点属性に持つデカールメッシュを作る。
     /// 各三角形は自分の UV 位置に描かれるため、シームをまたぐステッチも両側のアイランドへ分割される。
+    /// allowedIslands（島番号で引く。null なら全アイランド）に含まれないアイランドの三角形には描かない。
     /// </summary>
     public static class DecalMeshBuilder
     {
@@ -18,13 +19,15 @@ namespace Dennokoworks.StitchMaker
         static readonly Vector3[] local = new Vector3[3];
 
         /// <summary>1 パス分のデカールメッシュを mesh に書き込む（mesh は呼び出し側が再利用する）。</summary>
-        public static void Build(MeshSnapshot snapshot, StitchSettings settings, List<StitchSample> samples, Mesh mesh)
+        public static void Build(MeshSnapshot snapshot, StitchSettings settings, List<StitchSample> samples,
+            bool[] allowedIslands, Mesh mesh)
         {
-            Build(snapshot, settings.ScaledLength, settings.ScaledWidth, samples, mesh);
+            Build(snapshot, settings.ScaledLength, settings.ScaledWidth, samples, allowedIslands, mesh);
         }
 
         /// <summary>各サンプルを中心に length × width の四角形を貼るデカールメッシュを作る（溝にも使う）。</summary>
-        public static void Build(MeshSnapshot snapshot, float length, float width, List<StitchSample> samples, Mesh mesh)
+        public static void Build(MeshSnapshot snapshot, float length, float width, List<StitchSample> samples,
+            bool[] allowedIslands, Mesh mesh)
         {
             positions.Clear();
             stitchCoords.Clear();
@@ -42,6 +45,7 @@ namespace Dennokoworks.StitchMaker
             var tangents = snapshot.Tangents;
             var uvs = snapshot.Uvs;
             var triangles = snapshot.Triangles;
+            var islands = snapshot.TriangleIslands;
 
             for (int s = 0; s < samples.Count; s++)
             {
@@ -53,6 +57,8 @@ namespace Dennokoworks.StitchMaker
                 snapshot.QueryTriangles(new Bounds(center, querySize), candidates);
                 for (int c = 0; c < candidates.Count; c++)
                 {
+                    if (allowedIslands != null && !allowedIslands[islands[candidates[c]]]) continue;
+
                     int first = candidates[c] * 3;
                     var v0 = vertices[triangles[first]];
                     var v1 = vertices[triangles[first + 1]];
