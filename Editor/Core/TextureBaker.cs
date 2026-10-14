@@ -11,6 +11,9 @@ namespace Dennokoworks.StitchMaker
     {
         const string ShaderName = "Hidden/dennokoworks/StitchMaker/Bake";
         const int DecalPass = 0, IslandMaskPass = 1, DilatePass = 2, GroovePass = 4;
+        const int DownsampleColorPass = 5, DownsampleNormalPass = 6, DownsampleHeightPass = 7;
+        // SSAA の作業解像度の上限。
+        const int MaxWorkResolution = 8192;
 
         static readonly int MaskTexId = Shader.PropertyToID("_MaskTex");
         static readonly int ValidTexId = Shader.PropertyToID("_ValidTex");
@@ -18,6 +21,7 @@ namespace Dennokoworks.StitchMaker
         static readonly int HeightScaleId = Shader.PropertyToID("_HeightScale");
         static readonly int NormalScaleId = Shader.PropertyToID("_NormalScale");
         static readonly int GrooveDepthId = Shader.PropertyToID("_GrooveDepth");
+        static readonly int FactorId = Shader.PropertyToID("_Factor");
 
         /// <summary>ARGB32 sRGB。RGB = 糸色、A = 被覆率。</summary>
         public RenderTexture Color => output?.color;
@@ -51,19 +55,59 @@ namespace Dennokoworks.StitchMaker
             UnityEngine.Object.DestroyImmediate(decalMesh);
         }
 
-        /// <summary>サンプリングからパディングまでを全パスについて実行する。</summary>
-        public void Render(MeshSnapshot snapshot, StitchDocument document)
+        /// <summary>
+        /// 出力解像度と SSAA 倍率から、実際に使う倍率（1 / 2 / 4）を求める。
+        /// 作業解像度（解像度 × 倍率）が上限を超える場合は、収まるまで倍率を半分にする。
+        /// </summary>
+        public static int EffectiveSsaa(int resolution, int ssaa)
         {
-            int resolution = Mathf.Clamp(document.export.resolution, 16, 8192);
+            int factor = ssaa >= 4 ? 4 : ssaa >= 2 ? 2 : 1;
+            int max = Mathf.Min(MaxWorkResolution, SystemInfo.maxTextureSize);
+            while (factor > 1 && ClampResolution(resolution) * factor > max)
+                factor /= 2;
+            return factor;
+        }
+
+        static int ClampResolution(int resolution) => Mathf.Clamp(resolution, 16, 8192);
+
+        /// <summary>
+        /// サンプリングからパディングまでを全パスについて実行する。
+        /// ssaa > 1 のときは作業解像度で描いてから出力解像度へ縮小する（作業用のターゲットは描画後に解放する）。
+        /// </summary>
+        public void Render(MeshSnapshot snapshot, StitchDocument document, int ssaa)
+        {
+            int resolution = ClampResolution(document.export.resolution);
             if (output == null || output.resolution != resolution || !output.IsCreated)
             {
                 output?.Dispose();
                 output = new Targets(resolution);
             }
 
+            int padding = Mathf.Clamp(document.export.padding, 0, 16);
+            int factor = EffectiveSsaa(resolution, ssaa);
             var previous = RenderTexture.active;
-            Draw(output, snapshot, document, Mathf.Clamp(document.export.padding, 0, 16));
-            RenderTexture.active = previous;
+            Targets work = null;
+            try
+            {
+                if (factor == 1)
+                {
+                    Draw(output, snapshot, document, padding);
+                    return;
+                }
+
+                // パディングも作業解像度で掛け、出力解像度での拡張幅を padding px に揃える。
+                work = new Targets(resolution * factor);
+                Draw(work, snapshot, document, padding * factor);
+                material.SetFloat(FactorId, factor);
+                Graphics.Blit(work.color, output.color, material, DownsampleColorPass);
+                Graphics.Blit(work.normal, output.normal, material, DownsampleNormalPass);
+                Graphics.Blit(work.height, output.height, material, DownsampleHeightPass);
+            }
+            finally
+            {
+                work?.Dispose();
+                RenderTexture.active = previous;
+            }
         }
 
         // ステッチと溝を描き、アイランドマスクを作って padding 回 Dilate する。
@@ -241,8 +285,18 @@ namespace Dennokoworks.StitchMaker
                 wrapMode = TextureWrapMode.Clamp,
                 useMipMap = false,
             };
-            texture.Create();
+            if (!texture.Create())
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+                throw CreateFailed(resolution);
+            }
             return texture;
+        }
+
+        static Exception CreateFailed(int resolution)
+        {
+            return new InvalidOperationException(
+                resolution + "px の RenderTexture を作成できません（VRAM 不足の可能性があります）。解像度かアンチエイリアスの倍率を下げてください。");
         }
 
         static void Release(RenderTexture texture)
@@ -315,6 +369,19 @@ namespace Dennokoworks.StitchMaker
             public Targets(int resolution)
             {
                 this.resolution = resolution;
+                try
+                {
+                    CreateAll();
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
+            }
+
+            void CreateAll()
+            {
                 color = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
                 colorTemp = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
                 normal = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
@@ -327,7 +394,7 @@ namespace Dennokoworks.StitchMaker
                 {
                     hideFlags = HideFlags.HideAndDontSave,
                 };
-                depth.Create();
+                if (!depth.Create()) throw CreateFailed(resolution);
             }
 
             public bool IsCreated => color != null && color.IsCreated();

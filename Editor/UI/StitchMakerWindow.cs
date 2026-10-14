@@ -781,7 +781,8 @@ namespace Dennokoworks.StitchMaker
             try
             {
                 if (baker == null) baker = new TextureBaker();
-                baker.Render(snapshot, document);
+                // プレビューは編集のたびに描き直すため、アンチエイリアスを掛けない（出力時のみ）。
+                baker.Render(snapshot, document, 1);
                 needsRebuild = false;
                 return true;
             }
@@ -1024,7 +1025,7 @@ namespace Dennokoworks.StitchMaker
             try
             {
                 if (baker == null) baker = new TextureBaker();
-                baker.Render(snapshot, document);
+                baker.Render(snapshot, document, document.export.ssaa);
                 needsRebuild = false;
                 baker.Export(document.export, SanitizeFileName(target.name));
                 AssetDatabase.Refresh();
