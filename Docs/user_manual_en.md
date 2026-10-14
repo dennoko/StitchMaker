@@ -195,6 +195,12 @@ Because StitchMaker mirrors in **3D mesh space** and re-projects onto the opposi
 #### Export Settings
 - **Resolution**: Output texture resolution (`512`, `1024`, `2048`, `4096`). Matching your garment's original texture resolution is recommended.
 - **Padding (px)**: Dilates pixels beyond the decal border (default: `4 px`) to prevent dark seams and mipmap bleeding.
+- **Anti-aliasing**: On export, renders at 2x / 4x the width and height and then scales down, smoothing jagged edges on stitch outlines and curves (default: `2x`).
+  - **OFF**: Renders at the output resolution. Fastest.
+  - **2x**: Recommended for most cases.
+  - **4x**: Smoother still, but exporting takes longer and uses more VRAM.
+  - The internal working resolution is capped at `8192 px`. If a combination exceeds it (e.g. `4096` with `4x`), textures are exported with `2x` instead, and a note appears below the setting.
+  - Anti-aliasing is applied only when exporting textures. To keep editing responsive, it is not reflected in the Scene view preview.
 - **Export Checkboxes**:
   - **Color**: RGBA base color texture with alpha transparency.
   - **Normal**: Normal map texture (automatically imported as Texture Type `Normal map` in Unity).

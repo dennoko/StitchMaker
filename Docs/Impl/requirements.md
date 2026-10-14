@@ -48,7 +48,7 @@ KISS 原則に従い、以下は実装しない。必要になった時点で個
 2. **編集対象は 1 つの `StitchDocument`（ScriptableObject）**。ウィンドウがメモリ上のインスタンスを保持し、`.asset` はそのスナップショット（保存＝コピー書き出し、読込＝コピー読み込み）。Undo は `Undo.RecordObject(document)` の 1 経路だけになる。
 3. **パスは設定値を自分で持つ。プリセットは「値のテンプレート」**。プリセットを適用すると値がパスへコピーされ、以後は参照しない。ID による参照解決や、プリセット変更の波及は存在しない。
 4. **投影は「デカールメッシュを UV 空間に 1 回描く」だけ**。ステッチごとに近傍三角形を集め、ステッチ基準の座標を頂点に持たせた一時メッシュを CPU で作り、UV を画面座標として描画する。シーム跨ぎと UV 密度非依存はこの方式から自動的に得られる。
-5. **プレビューと出力は同じパイプライン・同じ解像度**。プレビュー用の別実装を持たない（WYSIWYG）。
+5. **プレビューと出力は同じパイプライン・同じ解像度**。プレビュー用の別実装を持たない（WYSIWYG）。唯一の例外として、出力時のアンチエイリアス（SSAA、§7.6）はプレビューには掛けない（最終解像度とパイプラインは共通で、内部の作業解像度だけが異なる）。
 
 ### 2.1 処理パイプライン
 
@@ -213,7 +213,7 @@ classDiagram
 - **読込**: `Instantiate(asset)` を編集対象にする。アセット自体は編集しない。
 - 未保存の変更がある状態で「新規」「読込」を行う場合は確認ダイアログを出す（ウィンドウが `bool dirty` を保持）。
 - 対象 Renderer はシーン参照のためドキュメントには保存しない。読込後にユーザーが指定する。
-- `ExportSettings` の既定値: `resolution = 2048`、`padding = 4`、全マップ出力 ON、`overwrite = false`、`folder` は対象マテリアルのメインテクスチャの親フォルダ配下の `StitchMakerTexture`（メインテクスチャ未設定または Assets 外の場合はフォールバックとして `"Assets/dennokoworks/StitchMakerData/Textures"`）。
+- `ExportSettings` の既定値: `resolution = 2048`、`padding = 4`、`ssaa = 2`、全マップ出力 ON、`overwrite = false`、`folder` は対象マテリアルのメインテクスチャの親フォルダ配下の `StitchMakerTexture`（メインテクスチャ未設定または Assets 外の場合はフォールバックとして `"Assets/dennokoworks/StitchMakerData/Textures"`）。
 
 ### 4.4 プリセット（`PresetStore`）
 - 保存先: `%APPDATA%/dennokoworks/StitchMaker/Presets/`（`Environment.SpecialFolder.ApplicationData`）。Unity プロジェクトをまたいで共有される。
@@ -338,7 +338,8 @@ public sealed class TextureBaker : IDisposable
     public RenderTexture Color  { get; }   // ARGB32 sRGB   : RGB = 糸色, A = 被覆率
     public RenderTexture Normal { get; }   // ARGB32 Linear : 接空間法線
     public RenderTexture Height { get; }   // R8 Linear
-    public void Render(MeshSnapshot snapshot, StitchDocument document);  // サンプリング〜パディングまで
+    public void Render(MeshSnapshot snapshot, StitchDocument document, int ssaa);  // サンプリング〜パディング（〜縮小）まで
+    public static int EffectiveSsaa(int resolution, int ssaa);                  // 作業解像度の上限を考慮した実際の倍率
     public void Export(ExportSettings export, string baseName);          // PNG 書き出し + インポート設定
 }
 ```
@@ -377,7 +378,7 @@ public static class ScenePreview
 }
 ```
 
-再構築は `EditorApplication.update` で `needsRebuild` を見て `baker.Render(snapshot, document)` を 1 回呼ぶだけとする（シーンビューの描画中に RenderTarget を切り替えないため、`OnSceneGUI` の中では行わない）。`needsRebuild` を立てる契機は、ドキュメントの変更・Undo/Redo・スナップショット再生成・解像度/パディング変更の 4 つ。
+再構築は `EditorApplication.update` で `needsRebuild` を見て `baker.Render(snapshot, document)` を倍率 1 で 1 回呼ぶだけとする（シーンビューの描画中に RenderTarget を切り替えないため、`OnSceneGUI` の中では行わない）。`needsRebuild` を立てる契機は、ドキュメントの変更・Undo/Redo・スナップショット再生成・解像度/パディング変更の 4 つ。
 
 ---
 
@@ -501,6 +502,11 @@ Height = m × heightScale
 
 **Pass 4: Groove** — 溝（§7.5）。頂点形式は Pass 0 と同じ。
 
+**Pass 5〜7: Downsample** — SSAA（§7.6）の縮小。出力 1 画素に対応する `倍率 × 倍率` 個の作業画素をテクセル中心で読んで平均する（Box Filter、倍率は `_Factor`）。
+- Pass 5（Color）: RGB は被覆率（A）で重み付けした平均、A は単純平均。被覆の無いブロックは RGB も単純平均にし、余白の糸色を保つ（黒フチ防止）。Mask は Color の A なので同時に縮小される。
+- Pass 6（Normal）: アンパックして平均し、再正規化する（0 ベクトルなら平らな法線）。
+- Pass 7（Height）: 算術平均。
+
 ```
 (s, t, d) = TEXCOORD0（範囲外は破棄）
 y      = |2t − 1|                       // 0 = 溝の中心、1 = 溝の縁
@@ -521,6 +527,14 @@ Height = 0
 4. 透過出力（§8.3）では、Normal のアルファを被覆率と「法線の傾き（`(255 − B) × 24`）」の大きい方にして、糸の無い溝の部分も残す。
 
 ---
+
+### 7.6 アンチエイリアス（SSAA）
+詳細は [`anti_aliasing_plan.md`](anti_aliasing_plan.md)。
+
+- `ExportSettings.ssaa`（1 / 2 / 4、既定 2）の倍率で、縦横 `倍率` 倍の作業解像度に描画し、Pass 5〜7 で出力解像度へ縮小する。パディングも作業解像度で `padding × 倍率` 回掛け、出力解像度での拡張幅を `padding` px に揃える。
+- 作業解像度の上限は `min(8192, SystemInfo.maxTextureSize)`。超える場合は倍率を 4 → 2 → 1 と半分にする（`TextureBaker.EffectiveSsaa`）。UI は倍率が下がる組み合わせで注記を出す。
+- **出力時のみ** 適用する。プレビューは編集のたびに再ベイクするため、常に 1x で描く（§9.1 の目標を守るため）。
+- 作業解像度のターゲットは出力時だけ確保し、縮小後に必ず解放する（8192px で約 1.5GB の VRAM を使うため常駐させない）。作成に失敗した場合は例外にしてステータスバーに出す。
 
 ## 8. UI
 
@@ -561,6 +575,7 @@ Height = 0
 │ ▼ プレビュー・出力                                        │
 │   [x] プレビュー   表示: [ Combined ▼ ]                   │
 │   解像度: [ 2048 ▼ ]   パディング: [ 4 ] px              │
+│   アンチエイリアス: [ 2x ▼ ]                              │
 │   出力:   [x] Color  [x] Normal  [x] Height  [x] Mask    │
 │   [ ] 上書き保存                                          │
 │   出力先: [ Assets/.../StitchMakerTexture           ] [...] │
@@ -622,7 +637,7 @@ Height = 0
   - Texture Type = Normal map ではアルファが透過として扱われないため、透過出力時の Normal は Texture Type = Default（sRGB OFF、Alpha Is Transparency ON）で保存する。シェーダーで法線マップとして使う場合は、ユーザーが手動で Texture Type を Normal map に変更する。
   - Color は設定に関係なく常に透過。Mask は被覆率そのものなので対象外（常に不透明のグレースケール）。
 - インポート設定は新規作成時のみ適用し、既存ファイルの設定は変更しない。
-- 出力は現在のプレビューと同一の RenderTexture から行う（出力専用の再計算はしない）。
+- 出力時は現在の設定でベイクし直してから書き出す（プレビューに無いアンチエイリアスを掛けるため。§7.6）。
 
 ---
 
