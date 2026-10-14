@@ -46,6 +46,7 @@ In the Unity top menu, navigate to **`dennokoworks` > `StitchMaker`** to open th
    - **Left-Click**: Add control points on the mesh surface.
    - **Click on Line**: Insert a new control point into an existing segment.
    - **Drag**: Move a control point along the surface.
+   - **Shift + Click / Drag on empty space (box select)**: Select multiple control points and move them together.
    - **Right-Click**: Delete the clicked control point.
 
 ### Step 4: Select a Preset
@@ -120,7 +121,10 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 | :--- | :--- |
 | **Left Click on Mesh** | Adds a new control point at the clicked position (at the end of the path or after the selected node). |
 | **Left Click on Path Line** | Inserts a new control point at the clicked segment. |
-| **Drag Control Point** | Moves the control point along the mesh surface. |
+| **Drag Control Point** | Moves the control point along the mesh surface (dragging one of several selected points moves all selected points together). |
+| **Shift + Left Click on Control Point** | Adds the control point to the selection (removes it if already selected). |
+| **Left Drag on Empty Space** | Box select (hold Shift to add to the current selection). Dragging from an empty spot on the mesh does not add a control point. |
+| **Left Click outside the Mesh** | Clears the selection. |
 | **Drag Bezier Handle** | (When Bezier Handles is ON) Adjusts the direction and curvature of the curve. |
 | **Right Click on Control Point** | Deletes the clicked control point. |
 | **Alt + Left / Right Drag** | Standard Unity scene camera rotation and zoom (functions normally without interrupting path editing). |
