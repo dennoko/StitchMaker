@@ -95,7 +95,8 @@ Assets/dennokoworks/StitchMaker/
    │  ├─ PresetStore.cs             プリセットのファイル入出力（ユーザー / 同梱）
    │  └─ MaskImportSettings.cs      同梱マスクのインポート設定を固定（sRGB OFF・非圧縮）
    ├─ Core/
-   │  ├─ MeshSnapshot.cs            対象メッシュの複製・レイキャスト・近傍検索
+   │  ├─ MeshSnapshot.cs            対象メッシュの複製・レイキャスト・近傍検索・UV アイランド検出
+   │  ├─ IslandFilter.cs            アイランド限定で描いてよい UV アイランドの算出（§7.3）
    │  ├─ PathSampler.cs             曲線評価・等間隔サンプリング
    │  ├─ DecalMeshBuilder.cs        デカールメッシュ生成
    │  ├─ TextureBaker.cs            RenderTexture 描画・パディング・PNG 出力
@@ -204,8 +205,9 @@ classDiagram
 - 接線は保存しない（曲線から都度求める）。
 - `StitchPath.mirrorAxis`（`None` / `X` / `Y` / `Z`、既定 `None`）: メッシュ空間でその軸の座標が 0 の平面を対称面として、反対側にも同じステッチを描く。
 - `StitchPath.mirrorSnapRadius`（m、既定 0.03）: 鏡映した制御点を反対側の表面へ吸着させる探索半径。UI は mm で表示する。
-- ミラーの 2 項目はパスの属性であり、`StitchSettings` には入れない（プリセットを適用しても変わらない）。
-- 「+ パスを追加」でパスを追加すると、選択中のパスの `settings`（複製）と `mask` を引き継ぐ。同じステッチを複数箇所に置く用途のため。形状（ノード・`closed`・`manualHandles`）とミラーの 2 項目は引き継がない。パス未選択時（およびパス未選択のままシーンビューをクリックして自動作成したとき）は既定値と同梱の Straight マスクになる。
+- `StitchPath.islandConstrain`（既定 `true`）: パスが乗っている UV アイランドにだけ描く（§7.3）。シーンビューでのクリックもパスのアイランドの面を優先する（§6.2）。この項目が無い古いアセットを読み込んだ場合も `true` になる。
+- ミラーの 2 項目と `islandConstrain` はパスの属性であり、`StitchSettings` には入れない（プリセットの適用や設定の貼り付けでは変わらない）。パスの複製・ミラーの実体化では引き継ぐ。
+- 「+ パスを追加」でパスを追加すると、選択中のパスの `settings`（複製）と `mask` を引き継ぐ。同じステッチを複数箇所に置く用途のため。形状（ノード・`closed`・`manualHandles`）とミラーの 2 項目・`islandConstrain` は引き継がない（既定値になる）。パス未選択時（およびパス未選択のままシーンビューをクリックして自動作成したとき）は既定値と同梱の Straight マスクになる。
 
 ### 4.3 StitchDocument（`ScriptableObject`）
 - 編集中の実体はメモリ上のインスタンス（`HideFlags.DontSave`）。ウィンドウの `[SerializeField]` で保持するため、ドメインリロードとプレイモード切替をまたいで残る。エディタ終了・ウィンドウを閉じると失われる。
@@ -302,8 +304,24 @@ public sealed class MeshSnapshot : IDisposable
     public Vector4[] Tangents;
     public Vector2[] Uvs;
     public int[] Triangles;                      // materialIndex のサブメッシュのみ
+    public int[] TriangleIslands;                // 三角形ごとの UV アイランド番号
+    public int IslandCount { get; }
     public bool Raycast(Ray meshSpaceRay, out Vector3 position, out Vector3 normal);
+    // preferredIslands の面を、最も手前の交点から passThroughDepth 以内なら優先する（§6.2）
+    public bool Raycast(Ray meshSpaceRay, bool[] preferredIslands, float passThroughDepth,
+        out Vector3 position, out Vector3 normal);
     public void QueryTriangles(Bounds bounds, List<int> results);   // 三角形インデックス
+    public bool TrySnapToSurface(Vector3 origin, Vector3 normalHint, float radius,
+        out Vector3 snappedPosition, out Vector3 snappedNormal);
+    // TrySnapToSurface と同じ基準で吸着先の三角形を返す（無ければ -1）
+    public int FindSurfaceTriangle(Vector3 position, Vector3 normalHint, float radius);
+}
+
+// アイランド限定のパスで描いてよい / 優先するアイランド（島番号で引く。null なら拘束しない）
+public static class IslandFilter
+{
+    public static bool[] Collect(StitchPath path, MeshSnapshot snapshot);             // ベイク用（§7.3）
+    public static bool[] CollectNodeIslands(StitchPath path, MeshSnapshot snapshot);  // クリック用（§6.2）
 }
 
 public struct StitchSample { public Vector3 position, tangent, normal; }
@@ -326,11 +344,12 @@ public static class PathSampler
 public static class DecalMeshBuilder
 {
     // 1 パス分のデカールメッシュを mesh に書き込む（mesh は呼び出し側が再利用）
+    // allowedIslands（null 可）に含まれないアイランドの三角形には描かない
     public static void Build(MeshSnapshot snapshot, StitchSettings settings,
-        List<StitchSample> samples, Mesh mesh);
+        List<StitchSample> samples, bool[] allowedIslands, Mesh mesh);
     // 各サンプルに length × width の四角形を貼る（溝用）
     public static void Build(MeshSnapshot snapshot, float length, float width,
-        List<StitchSample> samples, Mesh mesh);
+        List<StitchSample> samples, bool[] allowedIslands, Mesh mesh);
 }
 
 public sealed class TextureBaker : IDisposable
@@ -399,10 +418,11 @@ public static class ScenePreview
 | ノードを右クリック | ノードを削除 |
 | ハンドルを左ドラッグ（`manualHandles` ON、選択ノードのみ表示） | ハンドルをメッシュ表面に沿って移動。反対側は点対称に追従 |
 | Shift + ハンドルを左ドラッグ | 反対側を追従させず独立に動かす（角を作る） |
+| Ctrl + クリック / ドラッグ | アイランド優先（§6.2）を解除し、常に最も手前の面に置く |
 
 - 当たり判定の優先順位は **ノード（ハンドル含む）＞ パスの線 ＞ メッシュ**。ノードは画面上 10px、線は 6px 以内。
 - 右クリックはノード上で `MouseDown` した場合のみ `Event.Use()` する。それ以外はシーンビュー標準の視点操作に渡す。
-- 閉じたパスへの切り替え、パスの追加・削除・選択はウィンドウ側で行う。キー修飾による補助操作は Shift（ハンドル独立、選択の追加・解除）のみ。
+- 閉じたパスへの切り替え、パスの追加・削除・選択はウィンドウ側で行う。キー修飾による補助操作は Shift（ハンドル独立、選択の追加・解除）と Ctrl（アイランド優先の解除）のみ。
 - 空いた場所で押した場合は `MouseUp` まで判定を保留し、4px 以上動いたら矩形選択、動かずに離したらクリック（ノード追加 / 選択解除）とする。そのため、メッシュ上の空いた場所からのドラッグではノードを追加しない。
 - 複数選択は `ScenePathEditor` が保持し、主選択（ウィンドウの `selectedNode`。ハンドル表示と追加位置の基準）を必ず含む。選択中のパス・ノード数・主選択がウィンドウ側や Undo で変わったら、主選択だけに戻す。
 - 複数移動では、掴んだノードをマウス位置へ移し、ほかの選択ノードは移動開始時の位置に同じ移動量を加えてから `MeshSnapshot.TrySnapToSurface`（半径 = 移動量、最小 1cm）で表面へ吸着させる。吸着できなければ移動量を加えた位置と元の法線を使う。ハンドルは向きを変えずに追従する。
@@ -413,6 +433,7 @@ public static class ScenePreview
 - 実装は全三角形への Möller–Trumbore 総当たり（表面のみ、裏面は無視）。Collider や Unity の内部 API には依存しない。10 万三角形で数 ms を想定し、§9.1 の目標を満たせない場合のみグリッドを使った高速化を検討する。
 - 法線は交点の重心座標で頂点法線を補間した値を使う。
 - 交点が無い場合（メッシュ外をドラッグ）は直前の位置を保つ。
+- **アイランド優先**: 選択中のパスが `islandConstrain` でノードが 1 つ以上あるとき、ノードの追加・挿入・ドラッグ（ハンドル含む）では、レイ上の表向きの交点のうち、最も手前の交点から 1cm 以内にあるパスのアイランド（`IslandFilter.CollectNodeIslands`、ノードが乗っているアイランドのみ）の面を優先する。無ければ最も手前の交点を使う。靴紐の隙間越しに下のアッパーへ置くため。奥行きの上限は、靴の反対側の内壁など遠い面へ飛ぶのを防ぐ。Ctrl を押している間は解除する。
 
 ### 6.3 表示
 - 選択中パスは不透明、それ以外は半透明の折れ線（`Handles.DrawAAPolyLine`）。ギズモは常に最前面に描く。
@@ -471,6 +492,16 @@ public static class ScenePreview
 | `TEXCOORD2` (float3) | `B` を同じ接空間で表したもの | 同上 |
 
 ステッチ座標は位置の一次式なので、三角形内の線形補間で厳密に求まる。各三角形は自分の UV 位置に描かれるため、**シームをまたぐステッチも両側のアイランドへ自動的に分割して描かれる**。また座標はメートル基準なので、UV 密度に関係なく同じ実寸になる。
+
+#### アイランド限定（`islandConstrain`）
+上に重なった別パーツ（靴紐・襟など）へステッチが漏れるのを防ぐ。詳細な背景は [`uv_island_constraint_specification.md`](uv_island_constraint_specification.md) を参照。
+
+- `MeshSnapshot` の生成時に、**位置と UV がともに一致する頂点**を同一とみなして Union-Find で三角形をまとめ、各三角形にアイランド番号を振る。ハードエッジで複製された頂点は結合され、UV シームは境界になる。
+- ベイク（プレビュー含む）のたびに、パスごとに `IslandFilter.Collect` で描いてよいアイランドを求め、手順 2 の前にそれ以外のアイランドの三角形を捨てる（溝も同じ）。
+  1. 各ノードについて、半径 1mm で `FindSurfaceTriangle`（ノード法線と同じ側を向いた面）を探し、そのアイランドを加える。
+  2. 両端のアイランドが異なるセグメントは、折れ線の途中の点（15 点）でも半径 1cm で探して加える（シームの間にある第 3 のアイランドの取りこぼし防止）。両端が同じセグメントは調べない（凹面で浮いた曲線が上の別パーツを拾うのを避ける）。
+  3. ミラーが有効なら、ミラー側（吸着後）のノード列にも同じ処理を行う。
+  4. 1 つも見つからなければ拘束しない。
 
 `QueryTriangles` は均一グリッドで実装する（セル辺 = メッシュ AABB の最長辺 / 64。各セルに AABB が重なる三角形のインデックスを保持）。
 
@@ -679,7 +710,8 @@ Height = 0
 
 ### 9.3 既知の制約
 - 左右で UV を重ねている（ミラー UV の）メッシュでは、片側に置いたステッチが反対側にも現れる。
-- 布の表裏が近接している箇所では、深度許容の範囲内にある同じ向きの面にもステッチが乗る。
+- 布の表裏が近接している箇所では、深度許容の範囲内にある同じ向きの面にもステッチが乗る（別の UV アイランドの面なら、アイランド限定で防げる）。
+- アイランド限定では、両端のノードが同じアイランドにあるセグメントが途中で別のアイランドを横切ると、その部分は描かれない（横切るアイランドにノードを置くか、アイランド限定を OFF にする）。
 - 未保存のドキュメントは、ウィンドウを閉じるかエディタを終了すると失われる。
 
 ---

@@ -120,7 +120,7 @@ flowchart TD
     - 奥行きの上限は、靴の反対側の内壁など、遠く離れた同じアイランドの面へ吸着してしまうのを防ぐためです。
   - 優先アイランドの面が後ろに無い場所（シームの向こうの別アイランドなど）では通常の交点になるため、パスを別アイランドへ延ばす操作はそのまま行えます。
   - **Ctrl を押している間は優先を解除**し、常に最も手前の面を使います（手前の別パーツへ意図的にノードを置く場合）。
-  - シーンビュー右下の操作ガイドに「Ctrl：手前の面を優先（アイランド優先を解除）」を追加します。
+  - シーンビュー右下の操作ガイドに「Ctrl + クリック：手前の別パーツに置く」を追加します。
 
 ---
 
@@ -139,7 +139,7 @@ flowchart TD
 ### 5.2 `StitchPath.cs` / `StitchDocument.cs` / `PathSampler.cs`
 - **`StitchPath`**: `public bool islandConstrain = true;`
 - **`StitchDocument.DuplicatePath`**、**`PathSampler.CreateMirroredPath`**: `islandConstrain` を引き継ぐ。
-- **`PathSampler`**: ミラー側のノード列を外部から使えるよう、`MirrorNodes` の結果を返す API（`BuildMirroredNodes`）を公開する。
+- **`PathSampler`**: ミラー側のノード列を外部から使えるよう、`MirrorNodes(source, snapshot, target)` を公開する。
 
 ### 5.3 `IslandFilter.cs`（新規、`Editor/Core`）
 - `public static bool[] Collect(StitchPath path, MeshSnapshot snapshot)`: §3.2 の許可アイランドを求める。拘束 OFF・見つからない場合は null。戻り値の配列は内部で再利用する（呼び出し側は次の呼び出しまでに使い切る）。
@@ -151,7 +151,7 @@ flowchart TD
 
 ### 5.5 `ScenePathEditor.cs` / UI
 - **ScenePathEditor**:
-  - ノードの追加・挿入・ドラッグで使う Raycast を、§4.2 のアイランド優先版に置き換える（優先アイランドはドラッグ開始時 / クリック時に求める）。
+  - ノードの追加・挿入・ドラッグで使う Raycast を、§4.2 のアイランド優先版に置き換える（優先アイランドは Raycast のたびに求める。ノード数 × 近傍検索なので、全三角形の Raycast に比べて無視できる）。
   - 操作ガイドに Ctrl の行を追加。
 - **StitchMakerWindow (UXML / C#)**:
   - ステッチ設定カードのミラー設定の上に「アイランド限定」トグルを追加（パスの属性なので区切り線の下、ミラーと同じグループ）。

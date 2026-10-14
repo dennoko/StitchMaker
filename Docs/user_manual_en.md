@@ -19,6 +19,7 @@ Supported Environments: Unity 2022.3.22f1 or later / Unity 6
    - [TARGET](#target)
    - [PATHS & Scene Interaction](#paths--scene-interaction)
    - [STITCH SETTINGS](#stitch-settings)
+   - [Island Constrain](#island-constrain)
    - [Mirror Function](#mirror-function)
    - [PREVIEW / EXPORT](#preview--export)
 3. [Troubleshooting & FAQ](#troubleshooting--faq)
@@ -105,9 +106,9 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 - **Eye Icon (Show / Hide)**: Toggles path visibility. Hidden paths are excluded from both the Scene view preview and texture export.
 - **× Button**: Deletes the selected path.
 - **Right-Click Menu**: Right-click a path row for the following:
-  - **Duplicate**: Duplicates the path including its shape, stitch settings, and mirror settings, and inserts it right after the original.
-  - **Copy / Paste Stitch Settings**: Copies the stitch settings (mask, scale, length, width, thread color, groove, etc.) to another path. The shape and mirror settings are not changed. Copied settings are kept until Unity is closed or scripts are recompiled.
-- **+ Add Path**: Appends a new stitch path to the list. If a path is selected, the new path inherits its stitch settings (mask, scale, length, width, thread color, etc.), which is handy for placing the same stitch in several places. The shape (control points, Closed, Bezier Handles) and mirror settings are not inherited.
+  - **Duplicate**: Duplicates the path including its shape, stitch settings, mirror settings, and Island Constrain, and inserts it right after the original.
+  - **Copy / Paste Stitch Settings**: Copies the stitch settings (mask, scale, length, width, thread color, groove, etc.) to another path. The shape, mirror settings, and Island Constrain are not changed. Copied settings are kept until Unity is closed or scripts are recompiled.
+- **+ Add Path**: Appends a new stitch path to the list. If a path is selected, the new path inherits its stitch settings (mask, scale, length, width, thread color, etc.), which is handy for placing the same stitch in several places. The shape (control points, Closed, Bezier Handles), mirror settings, and Island Constrain are not inherited (Island Constrain starts ON).
 
 #### Path Editing Controls
 - **Edit Mode**: Toggles the interactive editing mode in the Scene view.
@@ -130,6 +131,7 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 | **Left Click outside the Mesh** | Clears the selection. |
 | **Drag Bezier Handle** | (When Bezier Handles is ON) Adjusts the direction and curvature of the curve. |
 | **Right Click on Control Point** | Deletes the clicked control point. |
+| **Ctrl + Left Click / Drag** | On a path with Island Constrain, places the control point on the surface in front instead of preferring the path's part behind it (see [Island Constrain](#island-constrain)). |
 | **Alt + Left / Right Drag** | Standard Unity scene camera rotation and zoom (functions normally without interrupting path editing). |
 
 ---
@@ -163,6 +165,21 @@ Configures the appearance and placement of stitches for the currently selected p
 | **Jitter: Position (mm)** | 0 – 2 mm | Adds random positional variation to each stitch for a hand-stitched, organic look. |
 | **Jitter: Angle (°)** | 0 – 30° | Adds random angular variation to each stitch. |
 | **Seed** | Integer | Random seed value for reproducible jitter generation. Changing this value produces a different jitter pattern. |
+
+---
+
+### Island Constrain
+
+When you draw a stitch where **separate parts overlap within a few millimeters** (laces over a shoe upper, a collar over the body, a pocket over the fabric, etc.), the stitch can also be printed onto the part lying on top.
+With **Island Constrain** enabled (above Mirror Axis in the stitch settings, ON by default), stitches are drawn only on the parts (UV islands) the path lies on, so they do not leak onto overlapping parts.
+
+- Paths that cross a UV seam are drawn without gaps on the islands on both sides of the seam. The same applies to the mirrored side.
+- In the Scene view, once the path has at least one control point, clicks place control points on the path's part even if another part (such as a lace) is in front, as long as the path's surface is within 1 cm behind it. Hold **Ctrl** while clicking / dragging to place a point on the part in front.
+- This is a per-path setting and is not part of presets (applying a preset does not change it).
+- Turn it OFF to draw on every nearby surface as before, e.g. when a stitch should intentionally span separate parts.
+
+> [!NOTE]
+> If a section whose two end points lie on the same part crosses another part on the way, the crossing portion is not drawn. Place a control point on the crossed part as well, or turn Island Constrain OFF.
 
 ---
 
@@ -242,6 +259,9 @@ Textures are exported using the following format:
 1. Verify that **`Edit Mode`** is enabled (highlighted in blue).
 2. Ensure you are clicking directly on the surface of the assigned mesh (clicking empty space will not place nodes).
 3. Ensure the Scene view is not in 2D mode, and that you are not clicking the backface of a single-sided polygon.
+
+### Q. Stitches also appear on overlapping laces or collars
+**A.** Make sure **`Island Constrain`** is ON in the stitch settings. If they still appear, the overlapping part is probably connected to the part below in UV space (they form a single UV island). Separate their UVs in your DCC tool.
 
 ### Q. I want to select other GameObjects in the Scene, but StitchMaker keeps placing nodes
 **A.** Once you have finished path editing, toggle **`Edit Mode`** OFF in the StitchMaker window. This restores standard Unity selection behavior.
