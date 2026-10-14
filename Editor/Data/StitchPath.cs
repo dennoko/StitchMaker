@@ -34,6 +34,8 @@ namespace Dennokoworks.StitchMaker
         public MirrorAxis mirrorAxis = MirrorAxis.None;
         // 鏡映した制御点を反対側の表面へ吸着させるときの探索半径（メートル）。
         public float mirrorSnapRadius = 0.03f;
+        // パスが乗っている UV アイランドにだけ描く（上に重なった別パーツへの漏れを防ぐ）。
+        public bool islandConstrain = true;
         public Texture2D mask;
         public StitchSettings settings = new StitchSettings();
         public List<StitchNode> nodes = new List<StitchNode>();

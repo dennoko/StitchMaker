@@ -127,6 +127,7 @@ namespace Dennokoworks.StitchMaker
                 mask = source.mask,
                 settings = source.settings.Clone(),
                 mirrorSnapRadius = source.mirrorSnapRadius,
+                islandConstrain = source.islandConstrain,
             };
             mirrored.settings.angleOffset = -source.settings.angleOffset;
             MirrorNodes(source, snapshot, mirrored);

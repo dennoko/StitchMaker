@@ -60,6 +60,7 @@ namespace Dennokoworks.StitchMaker
                 manualHandles = source.manualHandles,
                 mirrorAxis = source.mirrorAxis,
                 mirrorSnapRadius = source.mirrorSnapRadius,
+                islandConstrain = source.islandConstrain,
                 mask = source.mask,
                 settings = source.settings.Clone(),
             };
