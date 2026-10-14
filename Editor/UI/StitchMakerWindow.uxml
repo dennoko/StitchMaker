@@ -38,14 +38,15 @@
         <!-- パス -->
         <ui:VisualElement class="dennoko-card">
             <ui:Label text="パス" class="dennoko-section-title dennoko-card-header" />
-            <!-- 行は C# で生成する（動的リスト） -->
-            <ui:VisualElement name="path-list" class="stitch-path-list stitch-no-loc" />
-            <!-- 新規 / 読込 / 保存。プレビュー表示モードと同様に幅を等分する -->
+            <!-- 新規 / 読込 / 保存（ドキュメント全体の操作）。プレビュー表示モードと同様に幅を等分する。
+                 パス単位の操作と誤認しないよう、パス一覧より上に置く。 -->
             <ui:VisualElement class="stitch-segment-row">
                 <ui:Button name="new-document-button" text="新規" class="stitch-segment" />
                 <ui:Button name="load-document-button" text="読込" class="stitch-segment" />
                 <ui:Button name="save-document-button" text="保存" class="stitch-segment" />
             </ui:VisualElement>
+            <!-- 行は C# で生成する（動的リスト） -->
+            <ui:VisualElement name="path-list" class="stitch-path-list stitch-no-loc" />
             <ui:Button name="add-path-button" text="+ パスを追加" class="dennoko-button-secondary" />
             <ui:VisualElement class="stitch-row">
                 <ui:Button name="edit-mode-button" text="編集モード" class="stitch-fixed" />
