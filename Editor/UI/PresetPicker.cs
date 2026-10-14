@@ -154,7 +154,7 @@ namespace Dennokoworks.StitchMaker
             {
                 label = label,
                 tooltip = s == null ? label : label + "\n" + Loc.F("長さ {0:0.##} mm / 幅 {1:0.##} mm / 間隔 {2:0.##} mm",
-                    s.length * 1000f, s.width * 1000f, s.spacing * 1000f),
+                    s.ScaledLength * 1000f, s.ScaledWidth * 1000f, s.ScaledSpacing * 1000f),
                 thumbnail = entry.texture,
                 apply = apply,
             };

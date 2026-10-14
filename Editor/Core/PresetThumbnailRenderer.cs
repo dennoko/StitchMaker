@@ -119,14 +119,14 @@ namespace Dennokoworks.StitchMaker
         // 間隔を基準に StitchCount 目が横に収まる縮尺を決め、ステッチごとに四角形を 1 枚置く。
         bool BuildMesh(StitchSettings settings, int w, int h)
         {
-            float length = Mathf.Max(settings.length, 1e-6f);
-            float width = Mathf.Max(settings.width, 1e-6f);
-            float spacing = Mathf.Max(settings.spacing, 1e-5f);
+            float length = Mathf.Max(settings.ScaledLength, 1e-6f);
+            float width = Mathf.Max(settings.ScaledWidth, 1e-6f);
+            float spacing = Mathf.Max(settings.ScaledSpacing, 1e-5f);
 
             // 角度オフセットで回したときの 1 目の外接矩形（ゆらぎの分も含める）。
             float angle = settings.angleOffset * Mathf.Deg2Rad;
             float cos = Mathf.Abs(Mathf.Cos(angle)), sin = Mathf.Abs(Mathf.Sin(angle));
-            float jitter = settings.jitterPosition * 2f;
+            float jitter = settings.ScaledJitterPosition * 2f;
             float extentX = length * cos + width * sin + jitter;
             float extentY = length * sin + width * cos + jitter;
 

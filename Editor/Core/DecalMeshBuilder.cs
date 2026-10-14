@@ -26,8 +26,8 @@ namespace Dennokoworks.StitchMaker
             bitangentAxes.Clear();
             indices.Clear();
 
-            float length = Mathf.Max(settings.length, 1e-6f);
-            float width = Mathf.Max(settings.width, 1e-6f);
+            float length = Mathf.Max(settings.ScaledLength, 1e-6f);
+            float width = Mathf.Max(settings.ScaledWidth, 1e-6f);
             float depth = Mathf.Max(length, width); // 深度許容
             var querySize = Vector3.one * (depth * 2f);
 

@@ -175,9 +175,11 @@ classDiagram
 
 ### 4.1 StitchSettings（`[Serializable] class`）
 数値だけを持つ。`JsonUtility` でそのままプリセットファイルになる。
+描画（`PathSampler` / `DecalMeshBuilder` / サムネイル）は `length`・`width`・`spacing`・`jitterPosition` に `scale` を掛けた `ScaledLength` などの読み取り専用プロパティを使う。
 
 | フィールド | 単位 / 範囲 | 既定値 | 内容 |
 | :--- | :--- | :--- | :--- |
+| `scale` | 倍率（UI は 0.25–4、下限 0.01） | 1 | `length`・`width`・`spacing`・`jitterPosition` にまとめて掛ける倍率。比率を保ったまま大きさを変える。UI の各スライダーは倍率を掛ける前の値を表示する |
 | `length` | m（UI は mm、0.5–20） | 0.003 | ステッチ 1 目の長さ（パス方向 = マスクの U 方向） |
 | `width` | m（UI は mm、0.1–10） | 0.0008 | ステッチの幅（マスクの V 方向） |
 | `spacing` | m（UI は mm、0.5–30） | 0.004 | 隣り合うステッチの中心間距離 |
@@ -213,7 +215,7 @@ classDiagram
   - `{name}.json` … `StitchSettings` の `JsonUtility` 出力
   - `{name}.png` … マスク画像
 - **保存**: パスの `settings` を JSON 化し、`mask` を RenderTexture 経由で PNG 化して書き出す（非 Readable・圧縮テクスチャでも同じ経路で扱える）。同名が存在する場合は上書き確認。
-- **適用**: JSON を読み、パスの `settings` に値をコピーする。マスク PNG は `Assets/dennokoworks/StitchMakerData/Masks/{name}_{内容ハッシュ先頭8桁}.png` へコピーして取り込み、その `Texture2D` をパスの `mask` に設定する。同じ内容のファイルが既にあれば再利用する。
+- **適用**: JSON を読み、パスの `settings` に値をコピーする。`scale` を持たない JSON（同梱プリセット・旧形式）でも元の大きさになるよう、コピー前に `scale` を 1 に戻す。マスク PNG は `Assets/dennokoworks/StitchMakerData/Masks/{name}_{内容ハッシュ先頭8桁}.png` へコピーして取り込み、その `Texture2D` をパスの `mask` に設定する。同じ内容のファイルが既にあれば再利用する。
 - **削除**: 2 ファイルを削除する。適用済みのパスには影響しない。
 - **読み込み（サムネイル用）**: `Load` / `LoadBuiltIn` は設定とマスクを読むだけで、パスへの適用やプロジェクトへの取り込みはしない。ユーザープリセットのマスク PNG はメモリ上の一時テクスチャとして読む。
 - 取り込んだマスクのインポート設定: sRGB OFF、圧縮なし、Wrap = Clamp、ミップマップ ON。
@@ -502,6 +504,7 @@ Height = m × heightScale
 │   プリセット: [ 適用… ▼ ] [ 保存… ] [ 削除… ] [ フォルダ ]│
 │   名前:       [ Path 2                                 ] │
 │   マスク:     [ Straight                            (◎) ]│
+│   スケール:   [=====|==============]  1.00               │
 │   長さ:       [=======|============]  3.0 mm             │
 │   幅:         [==|=================]  0.8 mm             │
 │   間隔:       [========|===========]  4.0 mm             │

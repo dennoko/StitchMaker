@@ -71,6 +71,7 @@
             <ui:TextField name="path-name-field" label="名前" />
             <uie:ObjectField name="mask-field" label="マスク" allow-scene-objects="false"
                 type="UnityEngine.Texture2D, UnityEngine.CoreModule" />
+            <ui:Slider name="scale-slider" label="スケール" low-value="0.25" high-value="4" show-input-field="true" />
             <ui:Slider name="length-slider" label="長さ (mm)" low-value="0.5" high-value="20" show-input-field="true" />
             <ui:Slider name="width-slider" label="幅 (mm)" low-value="0.1" high-value="10" show-input-field="true" />
             <ui:Slider name="spacing-slider" label="間隔 (mm)" low-value="0.5" high-value="30" show-input-field="true" />

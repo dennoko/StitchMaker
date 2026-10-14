@@ -197,12 +197,13 @@ namespace Dennokoworks.StitchMaker
         static void AppendSamples(StitchPath path, StitchSettings settings, List<StitchSample> results,
             int seedOffset, MirrorAxis mirrorAxis)
         {
-            if (settings.spacing < 1e-5f) return;
+            float spacing = settings.ScaledSpacing;
+            if (spacing < 1e-5f) return;
             bool mirrored = mirrorAxis != MirrorAxis.None;
             // 鏡映すると bitangent (= normal × tangent) と回転の向きが逆になる。
             float sign = mirrored ? -1f : 1f;
             var axis = Vector3.one - MirrorScale(mirrorAxis); // 対称軸の成分だけ 2、他は 0
-            float overlapLimit = settings.width * 0.25f;
+            float overlapLimit = settings.ScaledWidth * 0.25f;
 
             BuildPolyline(path, points, normals);
             if (points.Count < 2) return;
@@ -219,14 +220,14 @@ namespace Dennokoworks.StitchMaker
             if (IsClosed(path))
             {
                 // 継ぎ目が出ないよう、周長を割り切れる間隔に微調整する。
-                count = Mathf.Max(1, Mathf.RoundToInt(total / settings.spacing));
+                count = Mathf.Max(1, Mathf.RoundToInt(total / spacing));
                 step = total / count;
                 first = step * 0.5f;
             }
             else
             {
-                count = Mathf.Max(1, Mathf.FloorToInt(total / settings.spacing));
-                step = settings.spacing;
+                count = Mathf.Max(1, Mathf.FloorToInt(total / spacing));
+                step = spacing;
                 first = (total - (count - 1) * step) * 0.5f;
             }
             count = Mathf.Min(count, MaxSamples);
@@ -257,7 +258,7 @@ namespace Dennokoworks.StitchMaker
 
                 var bitangent = Vector3.Cross(normal, tangent);
                 var position = onCurve
-                               + (tangent * randomT + bitangent * (randomB * sign)) * settings.jitterPosition;
+                               + (tangent * randomT + bitangent * (randomB * sign)) * settings.ScaledJitterPosition;
                 float angle = (settings.angleOffset + randomAngle * settings.jitterAngle) * sign;
 
                 results.Add(new StitchSample

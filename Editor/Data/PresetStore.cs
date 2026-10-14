@@ -61,6 +61,8 @@ namespace Dennokoworks.StitchMaker
         public static void Apply(string name, StitchPath path)
         {
             if (!Exists(name)) return;
+            // scale を持たない古いプリセットでも、適用後は元の大きさになるようにする。
+            path.settings.scale = 1f;
             JsonUtility.FromJsonOverwrite(File.ReadAllText(JsonPath(name)), path.settings);
             if (File.Exists(PngPath(name)))
                 path.mask = ImportMask(name, File.ReadAllBytes(PngPath(name)));
@@ -155,6 +157,7 @@ namespace Dennokoworks.StitchMaker
         {
             if (!File.Exists(assetPath)) return;
             string json = File.ReadAllText(assetPath);
+            path.settings.scale = 1f;
             JsonUtility.FromJsonOverwrite(json, path.settings);
 
             var mask = LoadBuiltInMask(json);

@@ -262,6 +262,7 @@ namespace Dennokoworks.StitchMaker
             });
             maskWarning = root.Q<Label>("mask-warning");
 
+            BindSlider(root, "scale-slider", 1f, s => s.scale, (s, v) => s.scale = Mathf.Max(v, StitchSettings.MinScale));
             // スライダーは mm 表示、データはメートル。
             BindSlider(root, "length-slider", 1000f, s => s.length, (s, v) => s.length = v);
             BindSlider(root, "width-slider", 1000f, s => s.width, (s, v) => s.width = v);
@@ -451,6 +452,7 @@ namespace Dennokoworks.StitchMaker
             langEnButton.tooltip = Loc.T("英語で表示");
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
             if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
+            rootVisualElement.Q<Slider>("scale-slider").tooltip = Loc.T("長さ・幅・間隔・ゆらぎ（位置）にまとめて掛ける倍率。比率を保ったまま大きさを変える（各項目の表示値は倍率を掛ける前の値）");
             exportTransparentToggle.tooltip = Loc.T("Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）");
             mirrorAxisDropdown.tooltip = Loc.T("メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）");
             mirrorSnapField.tooltip = Loc.T("反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）");

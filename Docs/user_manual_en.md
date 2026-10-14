@@ -143,6 +143,7 @@ Configures the appearance and placement of stitches for the currently selected p
 | :--- | :--- | :--- |
 | **Name** | String | Name of the path. |
 | **Mask** | Texture2D | Grayscale decal mask defining the stitch shape. White represents thread/height, black is background. *Paths without a mask will not be rendered.* |
+| **Scale** | 0.25 – 4× | Multiplier applied to Length, Width, Spacing, and Jitter: Position together. Changes the overall size while keeping the stitch proportions. The fields below show values before scaling. Applying a preset resets it to 1.0 (custom presets saved with a scale restore that scale). |
 | **Length (mm)** | 0.5 – 20 mm | Length of each individual stitch along the tangent direction. |
 | **Width (mm)** | 0.1 – 10 mm | Width of each individual stitch. |
 | **Spacing (mm)** | 0.5 – 30 mm | Distance (pitch) between stitch centers along the path. Matching this to Length yields continuous stitches; higher values create dashed stitches. |
