@@ -207,6 +207,11 @@ namespace Dennokoworks.StitchMaker
             { "Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）",
               "Also exports Normal / Height with everything except the stitches transparent (Color is always transparent; Mask is unaffected)" },
 
+            // ---- アイランド限定
+            { "アイランド限定", "Island Constrain" },
+            { "パスが乗っているパーツ（UV アイランド）にだけステッチを描き、上に重なった靴紐や襟などへの漏れを防ぐ。シーンビューでは手前の別パーツ越しにクリックしても、パスのパーツへ制御点を置く",
+              "Draws stitches only on the parts (UV islands) the path lies on, preventing them from leaking onto overlapping laces, collars, etc. In the Scene view, clicks through other parts in front still place control points on the path's parts" },
+
             // ---- ミラー
             { "ミラー軸", "Mirror Axis" },
             { "吸着半径 (mm)", "Snap Radius (mm)" },

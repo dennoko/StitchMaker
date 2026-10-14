@@ -86,7 +86,8 @@
             <ui:Slider name="jitter-angle-slider" label="ゆらぎ・角度 (°)" low-value="0" high-value="30" show-input-field="true" />
             <ui:IntegerField name="seed-field" label="Seed" />
             <ui:VisualElement class="dennoko-separator" />
-            <!-- ミラー（パスごとの設定。プリセットには含まれない） -->
+            <!-- アイランド限定・ミラー（パスごとの設定。プリセットには含まれない） -->
+            <ui:Toggle name="path-island-toggle" text="アイランド限定" />
             <ui:DropdownField name="path-mirror-axis" label="ミラー軸" />
             <ui:FloatField name="path-mirror-snap-radius" label="吸着半径 (mm)" />
             <ui:Button name="path-bake-mirror-button" text="独立パスとして実体化" class="dennoko-button-secondary" />

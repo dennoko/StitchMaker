@@ -60,7 +60,7 @@ namespace Dennokoworks.StitchMaker
         VisualElement pathList, settingsCard;
         Toggle closedToggle, bezierToggle, previewToggle;
         Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle, exportOverwriteToggle;
-        Toggle exportTransparentToggle;
+        Toggle exportTransparentToggle, islandToggle;
         TextField presetNameField, pathNameField, exportFolderField;
         ColorField threadColorField;
         IntegerField seedField;
@@ -287,6 +287,10 @@ namespace Dennokoworks.StitchMaker
             seedField = root.Q<IntegerField>("seed-field");
             seedField.RegisterValueChangedCallback(evt =>
                 EditPath("Edit Stitch Settings", path => path.settings.seed = evt.newValue));
+
+            islandToggle = root.Q<Toggle>("path-island-toggle");
+            islandToggle.RegisterValueChangedCallback(evt =>
+                EditPath("Toggle Stitch Island Constrain", path => path.islandConstrain = evt.newValue));
 
             // ミラー。選択肢の並びは MirrorAxis の値と一致させる。
             mirrorAxisDropdown = root.Q<DropdownField>("path-mirror-axis");
@@ -519,6 +523,7 @@ namespace Dennokoworks.StitchMaker
             rootVisualElement.Q<Slider>("groove-depth-slider").tooltip = Loc.T("溝の壁の傾き。溝は Normal にだけ出る（Height は布地の高さのまま）");
             ssaaDropdown.tooltip = Loc.T("出力時に縦横 2 倍 / 4 倍の解像度で描いてから縮小し、輪郭のギザギザを抑える（通常は 2x を推奨）。プレビューには掛からない");
             exportTransparentToggle.tooltip = Loc.T("Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）");
+            islandToggle.tooltip = Loc.T("パスが乗っているパーツ（UV アイランド）にだけステッチを描き、上に重なった靴紐や襟などへの漏れを防ぐ。シーンビューでは手前の別パーツ越しにクリックしても、パスのパーツへ制御点を置く");
             mirrorAxisDropdown.tooltip = Loc.T("メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）");
             mirrorSnapField.tooltip = Loc.T("反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）");
             bakeMirrorButton.tooltip = Loc.T("ミラー側を個別に編集できる新しいパスに変換し、このパスのミラーを解除する");
@@ -561,6 +566,7 @@ namespace Dennokoworks.StitchMaker
                 threadColorField.SetValueWithoutNotify(path.settings.threadColor);
                 seedField.SetValueWithoutNotify(path.settings.seed);
                 foreach (var refresh in settingsRefreshers) refresh(path.settings);
+                islandToggle.SetValueWithoutNotify(path.islandConstrain);
                 mirrorAxisDropdown.SetValueWithoutNotify(
                     MirrorAxisChoices[Mathf.Clamp((int)path.mirrorAxis, 0, MirrorAxisChoices.Count - 1)]);
                 mirrorSnapField.SetValueWithoutNotify(path.mirrorSnapRadius * 1000f);
