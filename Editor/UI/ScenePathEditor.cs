@@ -11,6 +11,8 @@ namespace Dennokoworks.StitchMaker
         const float LinePickRadius = 6f;
         // 空いた場所でこれ以上動かしたら、クリックではなく矩形選択とみなす（GUI 座標）。
         const float RectSelectThreshold = 4f;
+        // アイランド優先で、最も手前の面からこの距離（メッシュ空間）までの奥の面を拾う。
+        const float PassThroughDepth = 0.01f;
 
         enum DragTarget
         {
@@ -34,7 +36,7 @@ namespace Dennokoworks.StitchMaker
 
         static readonly Color GuideColor = new Color(0.3f, 0.95f, 0.45f, 1f);
         static readonly Color GuideBackground = new Color(0.16f, 0.16f, 0.16f, 0.94f);
-        static readonly string[] guideLines = new string[5];
+        static readonly string[] guideLines = new string[6];
         static GUIStyle guideTitleStyle, guideLineStyle;
 
         static readonly List<Vector3> polyline = new List<Vector3>();
@@ -156,6 +158,7 @@ namespace Dennokoworks.StitchMaker
             guideLines[2] = Loc.T("右クリック：制御点を削除");
             guideLines[3] = Loc.T("Shift + クリック：選択に追加・解除");
             guideLines[4] = Loc.T("空いた場所をドラッグ：矩形選択");
+            guideLines[5] = Loc.T("Ctrl + クリック：手前の別パーツに置く");
             string title = Loc.T("パス編集モード");
 
             const float margin = 10f, padding = 8f, titleHeight = 20f, lineHeight = 20f;
@@ -235,7 +238,7 @@ namespace Dennokoworks.StitchMaker
 
                 // 線上はすぐに挿入し、そのままドラッグで位置を決められるようにする。
                 int segment = FindSegment(path, mouse);
-                if (segment >= 0 && snapshot.Raycast(MeshRay(mouse), out var position, out var normal))
+                if (segment >= 0 && RaycastPath(snapshot, path, mouse, out var position, out var normal))
                 {
                     Undo.RecordObject(document, "Add Stitch Node");
                     InsertNode(path, segment + 1, position, normal);
@@ -255,7 +258,8 @@ namespace Dennokoworks.StitchMaker
         static bool OnClickEmpty(StitchDocument document, MeshSnapshot snapshot,
             ref int selectedPath, ref int selectedNode)
         {
-            if (!snapshot.Raycast(MeshRay(dragStart), out var position, out var normal))
+            var path = GetPath(document, selectedPath);
+            if (!RaycastPath(snapshot, path, dragStart, out var position, out var normal))
             {
                 if (!Event.current.shift)
                 {
@@ -266,7 +270,6 @@ namespace Dennokoworks.StitchMaker
             }
 
             Undo.RecordObject(document, "Add Stitch Node");
-            var path = GetPath(document, selectedPath);
             if (path == null)
             {
                 path = document.AddPath();
@@ -316,7 +319,7 @@ namespace Dennokoworks.StitchMaker
             if (path == null || selectedNode < 0 || selectedNode >= path.nodes.Count) return false;
 
             // メッシュ外では直前の位置を保つ。
-            if (!snapshot.Raycast(MeshRay(e.mousePosition), out var position, out var normal)) return false;
+            if (!RaycastPath(snapshot, path, e.mousePosition, out var position, out var normal)) return false;
 
             var node = path.nodes[selectedNode];
             switch (drag)
@@ -517,6 +520,14 @@ namespace Dennokoworks.StitchMaker
         {
             var ray = HandleUtility.GUIPointToWorldRay(mouse);
             return new Ray(worldToMesh.MultiplyPoint3x4(ray.origin), worldToMesh.MultiplyVector(ray.direction));
+        }
+
+        // アイランド限定のパスでは、手前の別パーツ越しでもパスが乗っているパーツの面を拾う。Ctrl を押している間は解除する。
+        static bool RaycastPath(MeshSnapshot snapshot, StitchPath path, Vector2 mouse,
+            out Vector3 position, out Vector3 normal)
+        {
+            var preferred = Event.current.control ? null : IslandFilter.CollectNodeIslands(path, snapshot);
+            return snapshot.Raycast(MeshRay(mouse), preferred, PassThroughDepth, out position, out normal);
         }
 
         static bool IsFacing(StitchNode node)

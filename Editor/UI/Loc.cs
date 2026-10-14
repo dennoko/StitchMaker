@@ -233,6 +233,7 @@ namespace Dennokoworks.StitchMaker
             { "右クリック：制御点を削除", "Right Click: Delete control point" },
             { "Shift + クリック：選択に追加・解除", "Shift + Click: Add to / remove from selection" },
             { "空いた場所をドラッグ：矩形選択", "Drag on empty space: Box select" },
+            { "Ctrl + クリック：手前の別パーツに置く", "Ctrl + Click: Place on the part in front" },
 
             // ---- MeshSnapshot のエラー
             { "対象の Renderer にメッシュがありません（SkinnedMeshRenderer か、MeshFilter 付きの MeshRenderer を指定してください）。",
