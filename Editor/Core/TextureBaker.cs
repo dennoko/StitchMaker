@@ -20,15 +20,14 @@ namespace Dennokoworks.StitchMaker
         static readonly int GrooveDepthId = Shader.PropertyToID("_GrooveDepth");
 
         /// <summary>ARGB32 sRGB。RGB = 糸色、A = 被覆率。</summary>
-        public RenderTexture Color { get; private set; }
+        public RenderTexture Color => output?.color;
         /// <summary>ARGB32 Linear。接空間法線（OpenGL、+Y）。</summary>
-        public RenderTexture Normal { get; private set; }
+        public RenderTexture Normal => output?.normal;
         /// <summary>R8 Linear。</summary>
-        public RenderTexture Height { get; private set; }
+        public RenderTexture Height => output?.height;
 
-        RenderTexture colorTemp, normalTemp, heightTemp;
-        RenderTexture valid, validTemp;
-        RenderTexture depth;
+        // 出力解像度のターゲット。プレビューと書き出しが参照する。
+        Targets output;
 
         readonly Material material;
         readonly Mesh decalMesh;
@@ -46,7 +45,8 @@ namespace Dennokoworks.StitchMaker
 
         public void Dispose()
         {
-            ReleaseTargets();
+            output?.Dispose();
+            output = null;
             UnityEngine.Object.DestroyImmediate(material);
             UnityEngine.Object.DestroyImmediate(decalMesh);
         }
@@ -54,17 +54,29 @@ namespace Dennokoworks.StitchMaker
         /// <summary>サンプリングからパディングまでを全パスについて実行する。</summary>
         public void Render(MeshSnapshot snapshot, StitchDocument document)
         {
-            EnsureTargets(document.export.resolution);
+            int resolution = Mathf.Clamp(document.export.resolution, 16, 8192);
+            if (output == null || output.resolution != resolution || !output.IsCreated)
+            {
+                output?.Dispose();
+                output = new Targets(resolution);
+            }
+
             var previous = RenderTexture.active;
+            Draw(output, snapshot, document, Mathf.Clamp(document.export.padding, 0, 16));
+            RenderTexture.active = previous;
+        }
 
-            Clear(Color, new UnityEngine.Color(0f, 0f, 0f, 0f));
-            Clear(Normal, new UnityEngine.Color(0.5f, 0.5f, 1f, 1f));
-            Clear(Height, UnityEngine.Color.black);
+        // ステッチと溝を描き、アイランドマスクを作って padding 回 Dilate する。
+        void Draw(Targets t, MeshSnapshot snapshot, StitchDocument document, int padding)
+        {
+            Clear(t.color, new UnityEngine.Color(0f, 0f, 0f, 0f));
+            Clear(t.normal, new UnityEngine.Color(0.5f, 0.5f, 1f, 1f));
+            Clear(t.height, UnityEngine.Color.black);
 
-            colorBuffers[0] = Color.colorBuffer;
-            colorBuffers[1] = Normal.colorBuffer;
-            colorBuffers[2] = Height.colorBuffer;
-            Graphics.SetRenderTarget(colorBuffers, depth.depthBuffer);
+            colorBuffers[0] = t.color.colorBuffer;
+            colorBuffers[1] = t.normal.colorBuffer;
+            colorBuffers[2] = t.height.colorBuffer;
+            Graphics.SetRenderTarget(colorBuffers, t.depth.depthBuffer);
             GL.Clear(true, false, UnityEngine.Color.clear, 1f);
 
             for (int i = 0; i < document.paths.Count; i++)
@@ -89,21 +101,18 @@ namespace Dennokoworks.StitchMaker
                 Graphics.DrawMeshNow(decalMesh, Matrix4x4.identity);
             }
 
-            Clear(valid, UnityEngine.Color.black);
+            Clear(t.valid, UnityEngine.Color.black);
             material.SetPass(IslandMaskPass);
             Graphics.DrawMeshNow(snapshot.Mesh, Matrix4x4.identity);
 
-            int padding = Mathf.Clamp(document.export.padding, 0, 16);
             for (int i = 0; i < padding; i++)
             {
-                material.SetTexture(ValidTexId, valid);
-                Color = Dilate(Color, ref colorTemp);
-                Normal = Dilate(Normal, ref normalTemp);
-                Height = Dilate(Height, ref heightTemp);
-                valid = Dilate(valid, ref validTemp);
+                material.SetTexture(ValidTexId, t.valid);
+                Dilate(ref t.color, ref t.colorTemp);
+                Dilate(ref t.normal, ref t.normalTemp);
+                Dilate(ref t.height, ref t.heightTemp);
+                Dilate(ref t.valid, ref t.validTemp);
             }
-
-            RenderTexture.active = previous;
         }
 
         // 溝は幅の半分ごとに区切り、隣と半分ずつ重なる四角形で途切れなく覆う。
@@ -216,48 +225,11 @@ namespace Dennokoworks.StitchMaker
             return " " + count;
         }
 
-        void EnsureTargets(int resolution)
-        {
-            resolution = Mathf.Clamp(resolution, 16, 8192);
-            if (Color != null && Color.width == resolution && Color.IsCreated()) return;
-            ReleaseTargets();
-
-            Color = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-            colorTemp = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-            Normal = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-            normalTemp = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-            Height = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
-            heightTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
-            valid = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
-            validTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
-            depth = new RenderTexture(resolution, resolution, 24, RenderTextureFormat.Depth)
-            {
-                hideFlags = HideFlags.HideAndDontSave,
-            };
-            depth.Create();
-        }
-
-        void ReleaseTargets()
-        {
-            Release(Color);
-            Release(colorTemp);
-            Release(Normal);
-            Release(normalTemp);
-            Release(Height);
-            Release(heightTemp);
-            Release(valid);
-            Release(validTemp);
-            Release(depth);
-            Color = colorTemp = Normal = normalTemp = Height = heightTemp = valid = validTemp = depth = null;
-        }
-
         // source を temp へ 1px 拡張して描き、役割を入れ替える。
-        RenderTexture Dilate(RenderTexture source, ref RenderTexture temp)
+        void Dilate(ref RenderTexture source, ref RenderTexture temp)
         {
             Graphics.Blit(source, temp, material, DilatePass);
-            var result = temp;
-            temp = source;
-            return result;
+            (source, temp) = (temp, source);
         }
 
         static RenderTexture Create(int resolution, RenderTextureFormat format, RenderTextureReadWrite readWrite)
@@ -329,6 +301,49 @@ namespace Dennokoworks.StitchMaker
             {
                 setup(importer);
                 importer.SaveAndReimport();
+            }
+        }
+
+        /// <summary>1 解像度分のレンダーターゲット一式（描画先と Dilate 用の一時バッファ、アイランドマスク、深度）。</summary>
+        sealed class Targets : IDisposable
+        {
+            public readonly int resolution;
+            public RenderTexture color, normal, height, valid;
+            public RenderTexture colorTemp, normalTemp, heightTemp, validTemp;
+            public RenderTexture depth;
+
+            public Targets(int resolution)
+            {
+                this.resolution = resolution;
+                color = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                colorTemp = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                normal = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+                normalTemp = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+                height = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+                heightTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+                valid = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+                validTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+                depth = new RenderTexture(resolution, resolution, 24, RenderTextureFormat.Depth)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                };
+                depth.Create();
+            }
+
+            public bool IsCreated => color != null && color.IsCreated();
+
+            public void Dispose()
+            {
+                Release(color);
+                Release(colorTemp);
+                Release(normal);
+                Release(normalTemp);
+                Release(height);
+                Release(heightTemp);
+                Release(valid);
+                Release(validTemp);
+                Release(depth);
+                color = colorTemp = normal = normalTemp = height = heightTemp = valid = validTemp = depth = null;
             }
         }
     }
