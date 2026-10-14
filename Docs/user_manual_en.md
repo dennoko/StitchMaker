@@ -50,7 +50,7 @@ In the Unity top menu, navigate to **`dennokoworks` > `StitchMaker`** to open th
 
 ### Step 4: Select a Preset
 1. In the **`STITCH SETTINGS`** card, click the **`Apply…`** button under **`Preset`**.
-2. A list with thumbnails opens. Check the look and click a stitch style (e.g., `Straight`, `Double`, or `DoubleNarrow` (closely spaced double line) under `Basic`, `Cross` under `Decorative`, etc.).
+2. A list with thumbnails opens. Check the look and click a stitch style (e.g., `Straight`, `Double`, or `DoubleNarrow` (closely spaced double line) under `Basic`, `Cross` under `Decorative`, `Channel` (stitches sunk in a groove) under `Special`, etc.).
    - Each thumbnail is scaled automatically to show its stitch clearly, so thumbnails cannot be used to compare actual sizes between presets. Hover over a tile to see the actual length, width, and spacing.
 3. Adjust the **`Thread Color`** if desired.
 
@@ -151,6 +151,8 @@ Configures the appearance and placement of stitches for the currently selected p
 | **Thread Color** | Color (RGB) | Color of the thread applied to the Color texture output. |
 | **Height** | 0 – 1 | Height scale for the stitch in the Height texture. |
 | **Normal Strength** | 0 – 2 | Intensity of bumpiness in the Normal map. |
+| **Groove Width (mm)** | 0 – 10 mm | Width of a groove pressed into the fabric along the path. 0 means no groove. Use it for stitches sunk in a channel, as seen around the welt of shoes (preset `Channel`). Scale also applies. |
+| **Groove Depth** | 0 – 2 | Steepness of the groove walls. The groove appears only in the Normal map and does not affect Color or Height (the fabric is at height 0 in the Height map, so nothing can go below it). |
 | **Jitter: Position (mm)** | 0 – 2 mm | Adds random positional variation to each stitch for a hand-stitched, organic look. |
 | **Jitter: Angle (°)** | 0 – 30° | Adds random angular variation to each stitch. |
 | **Seed** | Integer | Random seed value for reproducible jitter generation. Changing this value produces a different jitter pattern. |
@@ -195,7 +197,7 @@ Because StitchMaker mirrors in **3D mesh space** and re-projects onto the opposi
   - **ON**: Overwrites existing files with the same name.
   - **OFF**: Appends sequential numbers (`_1`, `_2`, etc.) to avoid overwriting existing textures.
 - **Transparent Outside Stitches**:
-  - **ON**: Normal and Height maps will also have transparency outside stitches (Color is always transparent). Perfect for layering on top of existing textures in image editing software.
+  - **ON**: Normal and Height maps will also have transparency outside stitches (Color is always transparent). Perfect for layering on top of existing textures in image editing software. For paths with a groove, the groove remains visible in the Normal map even where there is no thread.
     - *Note: Unity's "Normal map" texture type does not treat alpha as transparency, so when this option is ON the Normal map is saved with Texture Type "Default" (sRGB OFF, Alpha Is Transparency ON). If you want to use it directly as a normal map in a shader inside Unity, change its Texture Type to "Normal map" in the import settings.*
   - **OFF**: Fills non-stitch background with neutral normal color (#8080FF) and height black (#000000).
 - **Output Folder**: Destination folder inside your project (`Assets/...`). Click the `...` button to choose a folder via file dialog.

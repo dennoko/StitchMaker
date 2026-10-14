@@ -81,7 +81,7 @@ Assets/dennokoworks/StitchMaker/
 ├─ Docs/Impl/                       設計ドキュメント
 ├─ Docs/Tools/generate_masks.py     同梱マスクの生成スクリプト（numpy + Pillow）
 ├─ Masks/                           同梱マスク 18 種（§4.5）
-├─ Presets/                         同梱プリセット 19 種（§4.5）
+├─ Presets/                         同梱プリセット 20 種（§4.5）
 ├─ version.json                     ローカルのバージョン（§8.5）
 └─ Editor/
    ├─ dennokoworks.StitchMaker.Editor.asmdef   （Editor プラットフォームのみ）
@@ -156,6 +156,9 @@ classDiagram
         +float jitterPosition
         +float jitterAngle
         +int seed
+        +float scale
+        +float grooveWidth
+        +float grooveDepth
     }
     class ExportSettings {
         +int resolution
@@ -175,11 +178,11 @@ classDiagram
 
 ### 4.1 StitchSettings（`[Serializable] class`）
 数値だけを持つ。`JsonUtility` でそのままプリセットファイルになる。
-描画（`PathSampler` / `DecalMeshBuilder` / サムネイル）は `length`・`width`・`spacing`・`jitterPosition` に `scale` を掛けた `ScaledLength` などの読み取り専用プロパティを使う。
+描画（`PathSampler` / `DecalMeshBuilder` / サムネイル）は `length`・`width`・`spacing`・`jitterPosition`・`grooveWidth` に `scale` を掛けた `ScaledLength` などの読み取り専用プロパティを使う。
 
 | フィールド | 単位 / 範囲 | 既定値 | 内容 |
 | :--- | :--- | :--- | :--- |
-| `scale` | 倍率（UI は 0.25–4、下限 0.01） | 1 | `length`・`width`・`spacing`・`jitterPosition` にまとめて掛ける倍率。比率を保ったまま大きさを変える。UI の各スライダーは倍率を掛ける前の値を表示する |
+| `scale` | 倍率（UI は 0.25–4、下限 0.01） | 1 | `length`・`width`・`spacing`・`jitterPosition`・`grooveWidth` にまとめて掛ける倍率。比率を保ったまま大きさを変える。UI の各スライダーは倍率を掛ける前の値を表示する |
 | `length` | m（UI は mm、0.5–20） | 0.003 | ステッチ 1 目の長さ（パス方向 = マスクの U 方向） |
 | `width` | m（UI は mm、0.1–10） | 0.0008 | ステッチの幅（マスクの V 方向） |
 | `spacing` | m（UI は mm、0.5–30） | 0.004 | 隣り合うステッチの中心間距離 |
@@ -190,6 +193,8 @@ classDiagram
 | `jitterPosition` | m（UI は mm、0–2） | 0 | 位置の乱数ゆらぎ（接線・従法線方向）。0 で無効 |
 | `jitterAngle` | 度、0–30 | 0 | 角度の乱数ゆらぎ。0 で無効 |
 | `seed` | int | 0 | ゆらぎの乱数シード（結果を決定的にする） |
+| `grooveWidth` | m（UI は mm、0–10） | 0 | パスに沿って布地を凹ませる溝の幅。0 で溝なし（§7.5） |
+| `grooveDepth` | 0–2 | 0.5 | 溝の壁の傾き。0 で溝なし。Normal にだけ出る |
 
 ### 4.2 StitchNode / StitchPath（`[Serializable] class`）
 - `StitchNode.position` / `normal`: メッシュ空間。`normal` はレイキャストで得た補間法線。
@@ -216,7 +221,7 @@ classDiagram
   - `{name}.json` … `StitchSettings` の `JsonUtility` 出力
   - `{name}.png` … マスク画像
 - **保存**: パスの `settings` を JSON 化し、`mask` を RenderTexture 経由で PNG 化して書き出す（非 Readable・圧縮テクスチャでも同じ経路で扱える）。同名が存在する場合は上書き確認。
-- **適用**: JSON を読み、パスの `settings` に値をコピーする。`scale` を持たない JSON（同梱プリセット・旧形式）でも元の大きさになるよう、コピー前に `scale` を 1 に戻す。マスク PNG は `Assets/dennokoworks/StitchMakerData/Masks/{name}_{内容ハッシュ先頭8桁}.png` へコピーして取り込み、その `Texture2D` をパスの `mask` に設定する。同じ内容のファイルが既にあれば再利用する。
+- **適用**: JSON を読み、パスの `settings` に値をコピーする（`StitchSettings.OverwriteFromPreset`）。JSON に無い項目（同梱プリセットや旧形式の `scale`・溝など）が適用前の値のまま残らないよう、コピー前に全項目を既定値へ戻す。マスク PNG は `Assets/dennokoworks/StitchMakerData/Masks/{name}_{内容ハッシュ先頭8桁}.png` へコピーして取り込み、その `Texture2D` をパスの `mask` に設定する。同じ内容のファイルが既にあれば再利用する。
 - **削除**: 2 ファイルを削除する。適用済みのパスには影響しない。
 - **読み込み（サムネイル用）**: `Load` / `LoadBuiltIn` は設定とマスクを読むだけで、パスへの適用やプロジェクトへの取り込みはしない。ユーザープリセットのマスク PNG はメモリ上の一時テクスチャとして読む。
 - 取り込んだマスクのインポート設定: sRGB OFF、圧縮なし、Wrap = Clamp、ミップマップ ON。
@@ -247,10 +252,11 @@ classDiagram
 | 装飾 | Herringbone | Herringbone | 5.0 × 4.0 / 3.4 | 間隔 = 長さ × 0.68 で交点が揃う |
 | 特殊 | Rough_Handsewn | Rough | 4.0 × 1.5 / 5.0 | 位置・角度のゆらぎ付き |
 | 特殊 | Frankenstein | Rough | 6.0 × 2.25 / 4.0 | 角度 90° で合わせ目をまたぐ |
+| 特殊 | Channel | Straight | 3.0 × 0.75 / 3.4 | 幅 2.6mm・深さ 0.8 の溝に糸が沈む（靴のコバ・底周りの溝縫い）。溝が目立つよう実物よりやや広い。高さ 0.5 |
 
 - タイル連続のマスクは「間隔 = 長さ」のときに隣と繋がる。片側だけに糸が寄るマスク（Overlock・Blanket）の向きは、角度を 180° にすると反転する。
 - **未対応**（現在の実装ではマスクと数値だけでは表現できない）:
-  - 針穴付き・空のパンチ穴 … マスクは 0 が布地の高さで、布地より低い「谷」を表せない。
+  - 針穴付き・空のパンチ穴 … マスクは 0 が布地の高さで、布地より低い「谷」を表せない（パスに沿って連続した溝だけは `grooveWidth` で描ける）。
   - パッカリング … マスク値がそのまま糸の被覆率（Color の A）になるため、糸の周囲の布のしわだけを凹凸として出せない。
   - ほつれ・たるみ … 1 本のパスは同じマスクを繰り返すため、一部のステッチだけ形を変えられない。
 
@@ -311,6 +317,8 @@ public static class PathSampler
     public static void BuildPolyline(StitchPath path, List<Vector3> points);
     // ステッチ配置（等間隔・ジッター・角度オフセット適用済み）
     public static void Sample(StitchPath path, List<StitchSample> results);
+    // 溝の区切り（step 間隔、ジッター・角度オフセットなし）
+    public static void SampleGroove(StitchPath path, float step, List<StitchSample> results);
     // manualHandles を ON にした時に自動ハンドルをノードへ書き込む
     public static void BakeAutoHandles(StitchPath path);
 }
@@ -319,6 +327,9 @@ public static class DecalMeshBuilder
 {
     // 1 パス分のデカールメッシュを mesh に書き込む（mesh は呼び出し側が再利用）
     public static void Build(MeshSnapshot snapshot, StitchSettings settings,
+        List<StitchSample> samples, Mesh mesh);
+    // 各サンプルに length × width の四角形を貼る（溝用）
+    public static void Build(MeshSnapshot snapshot, float length, float width,
         List<StitchSample> samples, Mesh mesh);
 }
 
@@ -472,13 +483,36 @@ Height = m × heightScale
 ```
 
 - **重なりは「マスク値の高い方が勝つ」**。深度にマスク値を書くことで、3 枚のターゲットが常に同じステッチの値で揃う（クロスステッチや急カーブでの重なりが破綻しない）。
-- `m = 0` の画素も破棄せず、糸色・被覆率 0・平坦な法線を書く。これによりステッチ周囲の RGB が糸色で埋まり、バイリニア補間時の黒フチが出ない。
+- `m = 0` の画素も破棄せず、糸色・被覆率 0・平坦な法線を書く。これによりステッチ周囲の RGB が糸色で埋まり、バイリニア補間時の黒フチが出ない。ただし溝（Pass 4）の画素は `m = 0` より僅かに手前なので、ステッチの余白で上書きされない。
 - 法線はステッチ基準の勾配から直接求めるため、UV 密度や UV の回転・反転に依存しない。出力は Unity 標準（OpenGL、+Y）とする。
 - クリア値: Color = (0,0,0,0)、Normal = (0.5,0.5,1,1)、Height = 0。
 
 **Pass 1: IslandMask** — `MeshSnapshot.Mesh` を UV 空間に描き、UV アイランド内を 1 にする（R8）。
 
 **Pass 2: Dilate** — 有効マスクが 0 の画素について、8 近傍のうち有効な画素の平均を書く。Color / Normal / Height とアイランドマスク自身に同じパスを `padding` 回適用する（1 回で 1px 拡張）。シーム上のステッチがアイランド境界で途切れてミップマップで滲むのを防ぐ。
+
+**Pass 3: Thumbnail** — プリセット一覧のサムネイル合成（§8.1.1）。
+
+**Pass 4: Groove** — 溝（§7.5）。頂点形式は Pass 0 と同じ。
+
+```
+(s, t, d) = TEXCOORD0（範囲外は破棄）
+y      = |2t − 1|                       // 0 = 溝の中心、1 = 溝の縁
+u      = saturate((y − 0.4) / 0.6)      // 中央 40% は平らな底、外側が壁
+slope  = grooveDepth · 6u(1−u) / 0.6 · sign(t − 0.5)   // smoothstep の傾き
+Color  = (糸色.rgb, 0)
+Normal = normalize((0,0,1) − slope·TEXCOORD2)
+Height = 0
+深度   = マスク値 0.001 相当
+```
+
+### 7.5 溝（`grooveWidth > 0` かつ `grooveDepth > 0`）
+靴のコバ周りなどの「溝の中に沈んだステッチ」を表すため、パスに沿って布地を凹ませる。マスクは 0 = 布地の高さで谷を表せないため、マスクとは別に描く。
+
+1. パスごとに、ステッチより先に溝を描く。`PathSampler.SampleGroove` で `grooveWidth / 2` 間隔に区切り（ジッター・角度オフセットなし、ミラーは §7.2 と同じ）、各区切りに長さ `grooveWidth`・幅 `grooveWidth` の四角形を貼る。隣と半分ずつ重なるので、曲線でも途切れない。
+2. Pass 4 で Normal だけを凹ませる。Color の A と Height は布地のまま（Height は 0 = 布地なので、布地より低い値を持てない）。
+3. 続けて描くステッチの糸（`m > 0`）は溝より手前なので上に乗り、余白（`m = 0`）は溝を上書きしない。
+4. 透過出力（§8.3）では、Normal のアルファを被覆率と「法線の傾き（`(255 − B) × 24`）」の大きい方にして、糸の無い溝の部分も残す。
 
 ---
 
@@ -513,6 +547,8 @@ Height = m × heightScale
 │   糸の色:     [ ■                                      ] │
 │   高さ:       [===================|]  1.00               │
 │   凹凸の強さ: [=====|==============]  0.50               │
+│   溝の幅:     [|===================]  0.0 mm             │
+│   溝の深さ:   [=====|==============]  0.50               │
 │   ゆらぎ(位置):[|===================]  0.0 mm            │
 │   ゆらぎ(角度):[|===================]  0.0 °   Seed [ 0 ]│
 ├──────────────────────────────────────────────────────────┤
@@ -539,7 +575,8 @@ Height = m × heightScale
   1. XY 平面上の直線パス（法線 +Z）を作り、`PathSampler.Sample` で配置を求める（角度オフセット・ゆらぎ・シードも反映される）。
   2. メッシュへの投影はせず、各ステッチを四角形 1 枚（四隅のステッチ座標 = (0,0)〜(1,1)）にして、Bake シェーダーの Decal パスで Color / Normal / Height に描く。
   3. 縮尺はプリセットごとに自動で決める。間隔 × 4 + 1 目分の外接矩形が横幅の 92% に、1 目分の高さが縦の 80% に収まる大きい方の縮尺を使い、端の目が切れないよう中心を置ける範囲に目を並べる。
-  4. Pass 3（Thumbnail）で中間グレーの布地に Color を重ね、Normal を使って左上からの平行光で陰影を付ける。2 倍の解像度で描いてから縮小する。
+  4. Pass 3（Thumbnail）で中間グレーの布地に Color を重ね、Normal を使って左上からの平行光で陰影を付ける（布地にも陰を付けるので溝が見える）。2 倍の解像度で描いてから縮小する。
+  - 溝のあるプリセットは、ステッチの前に左端から右端までの四角形 1 枚で溝を描く。縦の縮尺は 1 目の高さと溝の幅の大きい方で決める。
 - サムネイルはファイル（同梱は JSON のパス、ユーザーは名前）ごとにメモリ上へキャッシュし、更新時刻が変わったときだけ描き直す。ウィンドウを閉じたとき（`OnDisable`）に破棄する。
 
 ### 8.2 プレビュー（`ScenePreview`）
@@ -549,7 +586,7 @@ Height = m × heightScale
 
 | モード | 表示 |
 | :--- | :--- |
-| Combined | ステッチ部分だけを、糸色 × 簡易ライティング（カメラ方向のヘッドライト + 環境光）で半透明合成 |
+| Combined | ステッチ部分だけを、糸色 × 簡易ライティング（カメラ方向のヘッドライト + 環境光）で半透明合成。糸の無い溝は、平らな面より暗くなる分を黒い陰として重ねる |
 | Normal | メッシュ全体を灰色で不透明表示し、ステッチの法線だけでライティング |
 | Height | メッシュ全体に Height をグレースケールで不透明表示 |
 
@@ -572,7 +609,7 @@ Height = m × heightScale
   - **ON の場合**: 既存ファイルを上書き保存（再出力時に GUID が維持され、マテリアルへの割り当てが保持される）。
 - ステッチ以外を透過（`transparent`）:
   - 既定値は OFF。画像編集ソフトで元のテクスチャへ重ねやすくするためのオプション。
-  - **ON の場合**: Normal と Height を RGBA で書き出し、アルファに Color の A（被覆率）を入れる。Height は Alpha Is Transparency を ON にする。
+  - **ON の場合**: Normal と Height を RGBA で書き出し、アルファに Color の A（被覆率）を入れる。Normal は溝（§7.5）も残るよう、法線が傾いている画素を傾きに応じて不透明にする。Height は Alpha Is Transparency を ON にする。
   - Texture Type = Normal map ではアルファが透過として扱われないため、透過出力時の Normal は Texture Type = Default（sRGB OFF、Alpha Is Transparency ON）で保存する。シェーダーで法線マップとして使う場合は、ユーザーが手動で Texture Type を Normal map に変更する。
   - Color は設定に関係なく常に透過。Mask は被覆率そのものなので対象外（常に不透明のグレースケール）。
 - インポート設定は新規作成時のみ適用し、既存ファイルの設定は変更しない。

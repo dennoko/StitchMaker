@@ -80,6 +80,8 @@
             <uie:ColorField name="thread-color-field" label="糸の色" show-alpha="false" />
             <ui:Slider name="height-slider" label="高さ" low-value="0" high-value="1" show-input-field="true" />
             <ui:Slider name="normal-slider" label="凹凸の強さ" low-value="0" high-value="2" show-input-field="true" />
+            <ui:Slider name="groove-width-slider" label="溝の幅 (mm)" low-value="0" high-value="10" show-input-field="true" />
+            <ui:Slider name="groove-depth-slider" label="溝の深さ" low-value="0" high-value="2" show-input-field="true" />
             <ui:Slider name="jitter-position-slider" label="ゆらぎ・位置 (mm)" low-value="0" high-value="2" show-input-field="true" />
             <ui:Slider name="jitter-angle-slider" label="ゆらぎ・角度 (°)" low-value="0" high-value="30" show-input-field="true" />
             <ui:IntegerField name="seed-field" label="Seed" />

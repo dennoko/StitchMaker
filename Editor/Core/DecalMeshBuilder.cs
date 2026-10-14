@@ -20,14 +20,20 @@ namespace Dennokoworks.StitchMaker
         /// <summary>1 パス分のデカールメッシュを mesh に書き込む（mesh は呼び出し側が再利用する）。</summary>
         public static void Build(MeshSnapshot snapshot, StitchSettings settings, List<StitchSample> samples, Mesh mesh)
         {
+            Build(snapshot, settings.ScaledLength, settings.ScaledWidth, samples, mesh);
+        }
+
+        /// <summary>各サンプルを中心に length × width の四角形を貼るデカールメッシュを作る（溝にも使う）。</summary>
+        public static void Build(MeshSnapshot snapshot, float length, float width, List<StitchSample> samples, Mesh mesh)
+        {
             positions.Clear();
             stitchCoords.Clear();
             tangentAxes.Clear();
             bitangentAxes.Clear();
             indices.Clear();
 
-            float length = Mathf.Max(settings.ScaledLength, 1e-6f);
-            float width = Mathf.Max(settings.ScaledWidth, 1e-6f);
+            length = Mathf.Max(length, 1e-6f);
+            width = Mathf.Max(width, 1e-6f);
             float depth = Mathf.Max(length, width); // 深度許容
             var querySize = Vector3.one * (depth * 2f);
 

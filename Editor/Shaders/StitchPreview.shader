@@ -74,7 +74,13 @@ Shader "Hidden/dennokoworks/StitchMaker/Preview"
                 float lit = 0.35 + 0.65 * saturate(dot(worldNormal, toCamera));
 
                 if (_Mode < 0.5)
-                    return float4(color.rgb * lit, color.a);
+                {
+                    // 糸の無い溝は、平らな面より暗くなる分を黒い陰として重ねる。
+                    float flatLit = 0.35 + 0.65 * saturate(dot(normalize(i.worldNormal), toCamera));
+                    float shadow = saturate((1.0 - lit / flatLit) * 2.0);
+                    float alpha = color.a + shadow * (1.0 - color.a);
+                    return float4(color.rgb * lit * color.a / max(alpha, 1e-4), alpha);
+                }
                 if (_Mode < 1.5)
                     return float4(lit * 0.7, lit * 0.7, lit * 0.7, 1.0);
                 return float4(height, height, height, 1.0);

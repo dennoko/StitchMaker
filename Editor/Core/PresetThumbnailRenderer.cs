@@ -13,7 +13,7 @@ namespace Dennokoworks.StitchMaker
         public const int Width = 192, Height = 96;
 
         const string ShaderName = "Hidden/dennokoworks/StitchMaker/Bake";
-        const int DecalPass = 0, ThumbnailPass = 3;
+        const int DecalPass = 0, ThumbnailPass = 3, GroovePass = 4;
         const int Supersample = 2;
         // 横に並べる目の数と、サムネイル内でステッチが占める割合。
         const int StitchCount = 5;
@@ -24,10 +24,12 @@ namespace Dennokoworks.StitchMaker
         static readonly int ColorId = Shader.PropertyToID("_Color");
         static readonly int HeightScaleId = Shader.PropertyToID("_HeightScale");
         static readonly int NormalScaleId = Shader.PropertyToID("_NormalScale");
+        static readonly int GrooveDepthId = Shader.PropertyToID("_GrooveDepth");
         static readonly Vector2[] Corners = { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) };
 
         readonly Material material;
         readonly Mesh mesh;
+        readonly Mesh grooveMesh;
         readonly StitchPath path = new StitchPath();
         readonly List<StitchSample> samples = new List<StitchSample>();
         readonly List<Vector3> positions = new List<Vector3>();
@@ -36,6 +38,7 @@ namespace Dennokoworks.StitchMaker
         readonly List<Vector3> bitangentAxes = new List<Vector3>();
         readonly List<int> indices = new List<int>();
         readonly RenderBuffer[] colorBuffers = new RenderBuffer[3];
+        float pixelsPerMeter;
 
         public PresetThumbnailRenderer()
         {
@@ -44,6 +47,7 @@ namespace Dennokoworks.StitchMaker
                 throw new InvalidOperationException("シェーダー " + ShaderName + " が見つかりません。");
             material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             mesh = new Mesh { name = "StitchMaker Thumbnail", hideFlags = HideFlags.HideAndDontSave };
+            grooveMesh = new Mesh { name = "StitchMaker Thumbnail Groove", hideFlags = HideFlags.HideAndDontSave };
 
             // XY 平面上の直線。法線 +Z、接線 +X、従法線 +Y（= サムネイルの上方向）。
             path.nodes.Add(new StitchNode { normal = Vector3.forward });
@@ -54,6 +58,7 @@ namespace Dennokoworks.StitchMaker
         {
             UnityEngine.Object.DestroyImmediate(material);
             UnityEngine.Object.DestroyImmediate(mesh);
+            UnityEngine.Object.DestroyImmediate(grooveMesh);
         }
 
         /// <summary>サムネイルを新しい Texture2D に描く（破棄は呼び出し側）。mask が null なら布地だけになる。</summary>
@@ -80,6 +85,15 @@ namespace Dennokoworks.StitchMaker
                 colorBuffers[2] = height.colorBuffer;
                 Graphics.SetRenderTarget(colorBuffers, depth.depthBuffer);
                 GL.Clear(true, false, Color.clear, 1f);
+
+                if (settings.HasGroove)
+                {
+                    BuildGrooveMesh(settings, h);
+                    material.SetColor(ColorId, settings.threadColor);
+                    material.SetFloat(GrooveDepthId, settings.grooveDepth);
+                    material.SetPass(GroovePass);
+                    Graphics.DrawMeshNow(grooveMesh, Matrix4x4.identity);
+                }
 
                 float k = settings.normalStrength;
                 float aspect = settings.width / Mathf.Max(settings.length, 1e-6f);
@@ -129,8 +143,9 @@ namespace Dennokoworks.StitchMaker
             float jitter = settings.ScaledJitterPosition * 2f;
             float extentX = length * cos + width * sin + jitter;
             float extentY = length * sin + width * cos + jitter;
+            if (settings.HasGroove) extentY = Mathf.Max(extentY, settings.ScaledGrooveWidth);
 
-            float pixelsPerMeter = Mathf.Min(
+            pixelsPerMeter = Mathf.Min(
                 w * FillX / (spacing * (StitchCount - 1) + extentX),
                 h * FillY / extentY);
             // 目の中心を置ける範囲。端の目が切れないよう、1 目分の幅を除く。
@@ -182,6 +197,26 @@ namespace Dennokoworks.StitchMaker
             mesh.SetUVs(2, bitangentAxes);
             mesh.SetTriangles(indices, 0, false);
             return true;
+        }
+
+        // 溝はサムネイルの左端から右端まで 1 枚の四角形で描く（BuildMesh の縮尺を使う）。
+        void BuildGrooveMesh(StitchSettings settings, int h)
+        {
+            float half = settings.ScaledGrooveWidth * 0.5f * pixelsPerMeter / h;
+            var vertices = new Vector3[4];
+            var coords = new Vector3[4];
+            for (int i = 0; i < 4; i++)
+            {
+                var corner = Corners[i];
+                vertices[i] = new Vector3(corner.x, 0.5f + (corner.y * 2f - 1f) * half, 0f);
+                coords[i] = new Vector3(corner.x, corner.y, 0f);
+            }
+            grooveMesh.Clear();
+            grooveMesh.vertices = vertices;
+            grooveMesh.SetUVs(0, coords);
+            grooveMesh.SetUVs(1, new[] { Vector3.right, Vector3.right, Vector3.right, Vector3.right });
+            grooveMesh.SetUVs(2, new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up });
+            grooveMesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0, false);
         }
 
         static void Clear(RenderTexture target, Color color)

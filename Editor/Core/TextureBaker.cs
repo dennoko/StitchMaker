@@ -10,13 +10,14 @@ namespace Dennokoworks.StitchMaker
     public sealed class TextureBaker : IDisposable
     {
         const string ShaderName = "Hidden/dennokoworks/StitchMaker/Bake";
-        const int DecalPass = 0, IslandMaskPass = 1, DilatePass = 2;
+        const int DecalPass = 0, IslandMaskPass = 1, DilatePass = 2, GroovePass = 4;
 
         static readonly int MaskTexId = Shader.PropertyToID("_MaskTex");
         static readonly int ValidTexId = Shader.PropertyToID("_ValidTex");
         static readonly int ColorId = Shader.PropertyToID("_Color");
         static readonly int HeightScaleId = Shader.PropertyToID("_HeightScale");
         static readonly int NormalScaleId = Shader.PropertyToID("_NormalScale");
+        static readonly int GrooveDepthId = Shader.PropertyToID("_GrooveDepth");
 
         /// <summary>ARGB32 sRGB。RGB = 糸色、A = 被覆率。</summary>
         public RenderTexture Color { get; private set; }
@@ -71,11 +72,13 @@ namespace Dennokoworks.StitchMaker
                 var path = document.paths[i];
                 if (!path.visible || path.mask == null || path.nodes.Count < 2) continue;
 
+                var settings = path.settings;
+                if (settings.HasGroove) DrawGroove(snapshot, path);
+
                 PathSampler.Sample(path, samples, i, snapshot);
                 if (samples.Count == 0) continue;
-                DecalMeshBuilder.Build(snapshot, path.settings, samples, decalMesh);
+                DecalMeshBuilder.Build(snapshot, settings, samples, decalMesh);
 
-                var settings = path.settings;
                 float k = settings.normalStrength;
                 float aspect = settings.width / Mathf.Max(settings.length, 1e-6f);
                 material.SetTexture(MaskTexId, path.mask);
@@ -103,6 +106,21 @@ namespace Dennokoworks.StitchMaker
             RenderTexture.active = previous;
         }
 
+        // 溝は幅の半分ごとに区切り、隣と半分ずつ重なる四角形で途切れなく覆う。
+        void DrawGroove(MeshSnapshot snapshot, StitchPath path)
+        {
+            float width = path.settings.ScaledGrooveWidth;
+            float step = width * 0.5f;
+            PathSampler.SampleGroove(path, step, samples, snapshot);
+            if (samples.Count == 0) return;
+            DecalMeshBuilder.Build(snapshot, step * 2f, width, samples, decalMesh);
+
+            material.SetColor(ColorId, path.settings.threadColor);
+            material.SetFloat(GrooveDepthId, path.settings.grooveDepth);
+            material.SetPass(GroovePass);
+            Graphics.DrawMeshNow(decalMesh, Matrix4x4.identity);
+        }
+
         /// <summary>現在の RenderTexture を PNG として書き出す。新規ファイルにのみインポート設定を適用する。</summary>
         public void Export(ExportSettings export, string baseName)
         {
@@ -113,7 +131,7 @@ namespace Dennokoworks.StitchMaker
             string suffix = GetUniqueSuffix(export, folder, baseName);
             string prefix = folder + "/" + baseName + "_Stitch_";
 
-            // 透過出力では Color の A（被覆率）を Normal / Height のアルファにも使う。
+            // 透過出力では Color の A（被覆率）を Normal / Height のアルファにも使う（Normal は溝の分も加える）。
             Color32[] coverage = null;
             if (export.transparent && (export.normal || export.height))
             {
@@ -136,8 +154,10 @@ namespace Dennokoworks.StitchMaker
                 var texture = Read(Normal, coverage != null ? TextureFormat.RGBA32 : TextureFormat.RGB24, true);
                 if (coverage != null)
                 {
+                    // 糸の無い溝も残るよう、法線が傾いている画素は傾きに応じて不透明にする（平らな画素は z = 255）。
                     var pixels = texture.GetPixels32();
-                    for (int i = 0; i < pixels.Length; i++) pixels[i].a = coverage[i].a;
+                    for (int i = 0; i < pixels.Length; i++)
+                        pixels[i].a = (byte)Mathf.Max(coverage[i].a, Mathf.Min(255, (255 - pixels[i].b) * 24));
                     texture.SetPixels32(pixels);
                     texture.Apply();
                 }

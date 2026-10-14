@@ -270,6 +270,8 @@ namespace Dennokoworks.StitchMaker
             BindSlider(root, "angle-slider", 1f, s => s.angleOffset, (s, v) => s.angleOffset = v);
             BindSlider(root, "height-slider", 1f, s => s.heightScale, (s, v) => s.heightScale = v);
             BindSlider(root, "normal-slider", 1f, s => s.normalStrength, (s, v) => s.normalStrength = v);
+            BindSlider(root, "groove-width-slider", 1000f, s => s.grooveWidth, (s, v) => s.grooveWidth = Mathf.Max(v, 0f));
+            BindSlider(root, "groove-depth-slider", 1f, s => s.grooveDepth, (s, v) => s.grooveDepth = Mathf.Max(v, 0f));
             BindSlider(root, "jitter-position-slider", 1000f, s => s.jitterPosition, (s, v) => s.jitterPosition = v);
             BindSlider(root, "jitter-angle-slider", 1f, s => s.jitterAngle, (s, v) => s.jitterAngle = v);
             threadColorField = root.Q<ColorField>("thread-color-field");
@@ -454,6 +456,8 @@ namespace Dennokoworks.StitchMaker
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
             if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
             rootVisualElement.Q<Slider>("scale-slider").tooltip = Loc.T("長さ・幅・間隔・ゆらぎ（位置）にまとめて掛ける倍率。比率を保ったまま大きさを変える（各項目の表示値は倍率を掛ける前の値）");
+            rootVisualElement.Q<Slider>("groove-width-slider").tooltip = Loc.T("パスに沿って布地を凹ませる溝の幅（0 で溝なし）。スケールも掛かる");
+            rootVisualElement.Q<Slider>("groove-depth-slider").tooltip = Loc.T("溝の壁の傾き。溝は Normal にだけ出る（Height は布地の高さのまま）");
             exportTransparentToggle.tooltip = Loc.T("Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）");
             mirrorAxisDropdown.tooltip = Loc.T("メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）");
             mirrorSnapField.tooltip = Loc.T("反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）");

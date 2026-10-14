@@ -150,12 +150,26 @@ namespace Dennokoworks.StitchMaker
             MeshSnapshot snapshot = null)
         {
             results.Clear();
-            AppendSamples(path, path.settings, results, seedOffset, MirrorAxis.None);
+            AppendSamples(path, path.settings, results, seedOffset, MirrorAxis.None, 0f);
             if (path.mirrorAxis == MirrorAxis.None || snapshot == null) return;
 
             // 単純な座標反転ではなく、吸着後のノード列を改めて等間隔に刻む（反対側の曲面でも間隔が保たれる）。
             MirrorNodes(path, snapshot, mirrorScratch);
-            AppendSamples(mirrorScratch, path.settings, results, seedOffset, path.mirrorAxis);
+            AppendSamples(mirrorScratch, path.settings, results, seedOffset, path.mirrorAxis, 0f);
+        }
+
+        /// <summary>
+        /// 溝を描く区切り（step 間隔・ジッターと角度オフセットなし）を求める。ミラーの扱いは Sample と同じ。
+        /// </summary>
+        public static void SampleGroove(StitchPath path, float step, List<StitchSample> results,
+            MeshSnapshot snapshot = null)
+        {
+            results.Clear();
+            AppendSamples(path, path.settings, results, 0, MirrorAxis.None, step);
+            if (path.mirrorAxis == MirrorAxis.None || snapshot == null) return;
+
+            MirrorNodes(path, snapshot, mirrorScratch);
+            AppendSamples(mirrorScratch, path.settings, results, 0, path.mirrorAxis, step);
         }
 
         // source の制御点を鏡映し、反対側の表面へ吸着させて target に書き込む。
@@ -194,16 +208,18 @@ namespace Dennokoworks.StitchMaker
         }
 
         // mirrorAxis が None 以外なら path はミラー側のノード列で、元パスと鏡像になるよう符号を反転して刻む。
+        // grooveStep > 0 なら溝用に、その間隔でゆらぎ・角度オフセットなしに刻む。
         static void AppendSamples(StitchPath path, StitchSettings settings, List<StitchSample> results,
-            int seedOffset, MirrorAxis mirrorAxis)
+            int seedOffset, MirrorAxis mirrorAxis, float grooveStep)
         {
-            float spacing = settings.ScaledSpacing;
+            bool groove = grooveStep > 0f;
+            float spacing = groove ? grooveStep : settings.ScaledSpacing;
             if (spacing < 1e-5f) return;
             bool mirrored = mirrorAxis != MirrorAxis.None;
             // 鏡映すると bitangent (= normal × tangent) と回転の向きが逆になる。
             float sign = mirrored ? -1f : 1f;
             var axis = Vector3.one - MirrorScale(mirrorAxis); // 対称軸の成分だけ 2、他は 0
-            float overlapLimit = settings.ScaledWidth * 0.25f;
+            float overlapLimit = (groove ? settings.ScaledGrooveWidth : settings.ScaledWidth) * 0.25f;
 
             BuildPolyline(path, points, normals);
             if (points.Count < 2) return;
@@ -255,6 +271,12 @@ namespace Dennokoworks.StitchMaker
                 var onCurve = Vector3.Lerp(points[edge], points[edge + 1], f);
                 // 対称面上では元パスのステッチと重なるので、ミラー側を省いて二重焼きを防ぐ。
                 if (mirrored && Mathf.Abs(Vector3.Dot(onCurve, axis)) * 0.5f < overlapLimit) continue;
+
+                if (groove)
+                {
+                    results.Add(new StitchSample { position = onCurve, tangent = tangent, normal = normal });
+                    continue;
+                }
 
                 var bitangent = Vector3.Cross(normal, tangent);
                 var position = onCurve
