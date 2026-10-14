@@ -173,8 +173,8 @@ namespace Dennokoworks.StitchMaker
             AppendSamples(mirrorScratch, path.settings, results, 0, path.mirrorAxis, step);
         }
 
-        // source の制御点を鏡映し、反対側の表面へ吸着させて target に書き込む。
-        static void MirrorNodes(StitchPath source, MeshSnapshot snapshot, StitchPath target)
+        /// <summary>source の制御点を鏡映し、反対側の表面へ吸着させて target に書き込む（target のミラーは None になる）。</summary>
+        public static void MirrorNodes(StitchPath source, MeshSnapshot snapshot, StitchPath target)
         {
             target.closed = source.closed;
             target.manualHandles = source.manualHandles;
