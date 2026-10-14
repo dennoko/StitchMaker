@@ -12,6 +12,8 @@ namespace Dennokoworks.StitchMaker
 
         public int resolution = 2048;
         public int padding = 4;
+        // 出力時のアンチエイリアス（SSAA）の倍率。1 = OFF、2 = 2x（推奨）、4 = 4x。プレビューには掛けない。
+        public int ssaa = 2;
         public bool color = true;
         public bool normal = true;
         public bool height = true;
