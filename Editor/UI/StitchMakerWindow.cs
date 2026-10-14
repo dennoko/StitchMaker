@@ -26,6 +26,9 @@ namespace Dennokoworks.StitchMaker
 
         static readonly List<string> ResolutionChoices = new List<string> { "512", "1024", "2048", "4096" };
         static readonly List<string> MirrorAxisChoices = new List<string> { "None", "X", "Y", "Z" };
+        // アンチエイリアスの選択肢と、対応する ExportSettings.ssaa の値。
+        static readonly List<string> SsaaChoices = new List<string> { "OFF", "2x", "4x" };
+        static readonly int[] SsaaValues = { 1, 2, 4 };
 
         public enum StatusType { Info, Success, Error }
 
@@ -53,7 +56,7 @@ namespace Dennokoworks.StitchMaker
         Button clearTargetButton, refreshMeshButton;
         Button previewCombinedButton, previewNormalButton, previewHeightButton;
         ObjectField targetField, maskField;
-        DropdownField materialDropdown, resolutionDropdown;
+        DropdownField materialDropdown, resolutionDropdown, ssaaDropdown;
         VisualElement pathList, settingsCard;
         Toggle closedToggle, bezierToggle, previewToggle;
         Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle, exportOverwriteToggle;
@@ -64,7 +67,7 @@ namespace Dennokoworks.StitchMaker
         DropdownField mirrorAxisDropdown;
         FloatField mirrorSnapField;
         Button bakeMirrorButton;
-        Label mirrorNote;
+        Label mirrorNote, ssaaNote;
         SliderInt paddingSlider;
         // 選択中パスの設定値をコントロールへ流し込む処理（スライダーごとに 1 つ）
         readonly List<Action<StitchSettings>> settingsRefreshers = new List<Action<StitchSettings>>();
@@ -322,9 +325,18 @@ namespace Dennokoworks.StitchMaker
             {
                 if (int.TryParse(evt.newValue, out int resolution))
                     EditExport(export => export.resolution = resolution);
+                RefreshSsaaNote();
             });
             paddingSlider = root.Q<SliderInt>("padding-slider");
             paddingSlider.RegisterValueChangedCallback(evt => EditExport(export => export.padding = evt.newValue));
+            ssaaDropdown = root.Q<DropdownField>("ssaa-dropdown");
+            ssaaDropdown.choices = SsaaChoices;
+            ssaaDropdown.RegisterValueChangedCallback(evt =>
+            {
+                EditExport(export => export.ssaa = SsaaValues[Mathf.Max(0, ssaaDropdown.index)]);
+                RefreshSsaaNote();
+            });
+            ssaaNote = root.Q<Label>("ssaa-note");
             exportColorToggle = BindExportToggle(root, "export-color-toggle", (export, v) => export.color = v);
             exportNormalToggle = BindExportToggle(root, "export-normal-toggle", (export, v) => export.normal = v);
             exportHeightToggle = BindExportToggle(root, "export-height-toggle", (export, v) => export.height = v);
@@ -505,6 +517,7 @@ namespace Dennokoworks.StitchMaker
             rootVisualElement.Q<Slider>("scale-slider").tooltip = Loc.T("長さ・幅・間隔・ゆらぎ（位置）にまとめて掛ける倍率。比率を保ったまま大きさを変える（各項目の表示値は倍率を掛ける前の値）");
             rootVisualElement.Q<Slider>("groove-width-slider").tooltip = Loc.T("パスに沿って布地を凹ませる溝の幅（0 で溝なし）。スケールも掛かる");
             rootVisualElement.Q<Slider>("groove-depth-slider").tooltip = Loc.T("溝の壁の傾き。溝は Normal にだけ出る（Height は布地の高さのまま）");
+            ssaaDropdown.tooltip = Loc.T("出力時に縦横 2 倍 / 4 倍の解像度で描いてから縮小し、輪郭のギザギザを抑える（通常は 2x を推奨）。プレビューには掛からない");
             exportTransparentToggle.tooltip = Loc.T("Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）");
             mirrorAxisDropdown.tooltip = Loc.T("メッシュのローカル座標で、選んだ軸の反対側にも同じステッチを描く（左右で UV アイランドを重ねているメッシュでは OFF にしてください）");
             mirrorSnapField.tooltip = Loc.T("反転した制御点を反対側の表面へ吸着させる距離。左右で形が違うメッシュ向け（0 で吸着しない）");
@@ -563,6 +576,8 @@ namespace Dennokoworks.StitchMaker
             var export = document.export;
             resolutionDropdown.SetValueWithoutNotify(export.resolution.ToString());
             paddingSlider.SetValueWithoutNotify(export.padding);
+            ssaaDropdown.SetValueWithoutNotify(SsaaChoices[SsaaIndex(export.ssaa)]);
+            RefreshSsaaNote();
             exportColorToggle.SetValueWithoutNotify(export.color);
             exportNormalToggle.SetValueWithoutNotify(export.normal);
             exportHeightToggle.SetValueWithoutNotify(export.height);
@@ -614,6 +629,21 @@ namespace Dennokoworks.StitchMaker
             mirrorSnapField.SetEnabled(mirrored);
             bakeMirrorButton.EnableInClassList(HiddenClass, !mirrored);
             mirrorNote.EnableInClassList(HiddenClass, !mirrored);
+        }
+
+        static int SsaaIndex(int ssaa) => ssaa >= 4 ? 2 : ssaa >= 2 ? 1 : 0;
+
+        // 作業解像度の上限で倍率が下がるときだけ、実際に使う倍率を注記する。
+        void RefreshSsaaNote()
+        {
+            if (document == null) return;
+            var export = document.export;
+            int effective = TextureBaker.EffectiveSsaa(export.resolution, export.ssaa);
+            bool clamped = effective < SsaaValues[SsaaIndex(export.ssaa)];
+            ssaaNote.text = clamped
+                ? Loc.F("※この解像度では作業解像度の上限を超えるため、{0} で出力します。", SsaaChoices[SsaaIndex(effective)])
+                : "";
+            ssaaNote.EnableInClassList(HiddenClass, !clamped);
         }
 
         void RefreshMaskWarning()

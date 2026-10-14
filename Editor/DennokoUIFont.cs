@@ -48,7 +48,8 @@ namespace Dennokoworks.StitchMaker
             "見規角解言設認語読象済質込追適選長閉間除隔集非頂飾高えけっとめケ倍値各大掛比率目項（）？" +
             "も傾地壁布沿深溝" +
             "ラ場所矩空：" +
-            "ピ付製複貼";
+            "ピ付製複貼" +
+            "エイ時縦横縮小、輪郭ギザ抑通常推奨※業限超";
 
         private static FontAsset _font;
         private static bool _unavailable;     // 未搭載環境。CreateFontAsset を再試行しない

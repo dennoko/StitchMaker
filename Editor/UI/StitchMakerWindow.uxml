@@ -106,6 +106,8 @@
             </ui:VisualElement>
             <ui:DropdownField name="resolution-dropdown" label="解像度" />
             <ui:SliderInt name="padding-slider" label="パディング (px)" low-value="0" high-value="16" show-input-field="true" />
+            <ui:DropdownField name="ssaa-dropdown" label="アンチエイリアス" />
+            <ui:Label name="ssaa-note" class="stitch-message stitch-no-loc" />
             <ui:VisualElement class="stitch-row">
                 <ui:Label text="出力" class="stitch-row-label" />
                 <ui:VisualElement class="stitch-row stitch-no-loc">
