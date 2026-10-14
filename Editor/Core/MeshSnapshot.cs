@@ -18,6 +18,9 @@ namespace Dennokoworks.StitchMaker
         public readonly Vector4[] Tangents;
         public readonly Vector2[] Uvs;
         public readonly int[] Triangles;
+        // 三角形ごとの UV アイランド番号（0 から IslandCount - 1）。
+        public readonly int[] TriangleIslands;
+        public int IslandCount { get; private set; }
 
         // 均一グリッド（CSR 形式）。セルごとに AABB が重なる三角形インデックスを持つ。
         Vector3 gridMin, gridMax;
@@ -104,6 +107,7 @@ namespace Dennokoworks.StitchMaker
             Mesh.RecalculateBounds();
 
             BuildGrid();
+            TriangleIslands = BuildIslands();
         }
 
         public static Mesh GetSourceMesh(Renderer renderer)
@@ -392,6 +396,67 @@ namespace Dennokoworks.StitchMaker
             }
 
             stamps = new int[triangleCount];
+        }
+
+        /// <summary>
+        /// 位置と UV が両方一致する頂点を同一とみなし、頂点を共有する三角形を同じアイランドにまとめる。
+        /// ハードエッジで複製された頂点は結合され、UV シーム（位置が同じで UV が違う）は境界になる。
+        /// </summary>
+        int[] BuildIslands()
+        {
+            int triangleCount = Triangles.Length / 3;
+            var islands = new int[triangleCount];
+            if (triangleCount == 0) return islands;
+
+            var parent = new int[Vertices.Length];
+            var welded = new Dictionary<(Vector3, Vector2), int>(Vertices.Length);
+            for (int i = 0; i < Vertices.Length; i++)
+            {
+                var key = (Vertices[i], Uvs[i]);
+                if (welded.TryGetValue(key, out int first))
+                {
+                    parent[i] = first;
+                }
+                else
+                {
+                    welded.Add(key, i);
+                    parent[i] = i;
+                }
+            }
+
+            for (int t = 0; t < triangleCount; t++)
+            {
+                int a = Find(parent, Triangles[t * 3]);
+                int b = Find(parent, Triangles[t * 3 + 1]);
+                int c = Find(parent, Triangles[t * 3 + 2]);
+                if (b != a) parent[b] = a;
+                if (c != a && c != b) parent[c] = a;
+            }
+
+            // 根ごとに、三角形に現れた順で連番を振る。
+            var ids = new Dictionary<int, int>();
+            for (int t = 0; t < triangleCount; t++)
+            {
+                int root = Find(parent, Triangles[t * 3]);
+                if (!ids.TryGetValue(root, out int id))
+                {
+                    id = ids.Count;
+                    ids.Add(root, id);
+                }
+                islands[t] = id;
+            }
+            IslandCount = ids.Count;
+            return islands;
+        }
+
+        static int Find(int[] parent, int i)
+        {
+            while (parent[i] != i)
+            {
+                parent[i] = parent[parent[i]]; // 経路半減
+                i = parent[i];
+            }
+            return i;
         }
 
         void TriangleCellRange(int triangle, out int x0, out int y0, out int z0, out int x1, out int y1, out int z1)
