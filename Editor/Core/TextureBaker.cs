@@ -141,7 +141,20 @@ namespace Dennokoworks.StitchMaker
                     texture.SetPixels32(pixels);
                     texture.Apply();
                 }
-                Write(prefix + "Normal" + suffix + ".png", texture, importer => importer.textureType = TextureImporterType.NormalMap);
+                // Normal map タイプはアルファを透過として扱えないため、透過時は Default（リニア）で保存する。
+                Write(prefix + "Normal" + suffix + ".png", texture, importer =>
+                {
+                    if (coverage != null)
+                    {
+                        importer.textureType = TextureImporterType.Default;
+                        importer.sRGBTexture = false;
+                        importer.alphaIsTransparency = true;
+                    }
+                    else
+                    {
+                        importer.textureType = TextureImporterType.NormalMap;
+                    }
+                });
             }
             if (export.height)
             {

@@ -194,6 +194,7 @@ Because StitchMaker mirrors in **3D mesh space** and re-projects onto the opposi
   - **OFF**: Appends sequential numbers (`_1`, `_2`, etc.) to avoid overwriting existing textures.
 - **Transparent Outside Stitches**:
   - **ON**: Normal and Height maps will also have transparency outside stitches (Color is always transparent). Perfect for layering on top of existing textures in image editing software.
+    - *Note: Unity's "Normal map" texture type does not treat alpha as transparency, so when this option is ON the Normal map is saved with Texture Type "Default" (sRGB OFF, Alpha Is Transparency ON). If you want to use it directly as a normal map in a shader inside Unity, change its Texture Type to "Normal map" in the import settings.*
   - **OFF**: Fills non-stitch background with neutral normal color (#8080FF) and height black (#000000).
 - **Output Folder**: Destination folder inside your project (`Assets/...`). Click the `...` button to choose a folder via file dialog.
 - **Export Textures**: Executes GPU baking and saves the PNG files to the specified folder. Once complete, Unity highlights the destination folder in the Project window.

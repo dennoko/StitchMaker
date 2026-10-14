@@ -538,7 +538,7 @@ Height = m × heightScale
 | ファイル | 内容 | インポート設定 |
 | :--- | :--- | :--- |
 | `{Renderer名}_Stitch_Color.png` | RGB = 糸色、A = 被覆率 | sRGB ON、Alpha Is Transparency ON |
-| `{Renderer名}_Stitch_Normal.png` | 接空間法線（OpenGL、+Y） | Texture Type = Normal map |
+| `{Renderer名}_Stitch_Normal.png` | 接空間法線（OpenGL、+Y） | Texture Type = Normal map（透過出力時は Default、sRGB OFF、Alpha Is Transparency ON） |
 | `{Renderer名}_Stitch_Height.png` | グレースケール（0 = 地、255 = 最も高い） | sRGB OFF |
 | `{Renderer名}_Stitch_Mask.png` | グレースケール（Color の A と同じ） | sRGB OFF |
 
@@ -553,6 +553,7 @@ Height = m × heightScale
 - ステッチ以外を透過（`transparent`）:
   - 既定値は OFF。画像編集ソフトで元のテクスチャへ重ねやすくするためのオプション。
   - **ON の場合**: Normal と Height を RGBA で書き出し、アルファに Color の A（被覆率）を入れる。Height は Alpha Is Transparency を ON にする。
+  - Texture Type = Normal map ではアルファが透過として扱われないため、透過出力時の Normal は Texture Type = Default（sRGB OFF、Alpha Is Transparency ON）で保存する。シェーダーで法線マップとして使う場合は、ユーザーが手動で Texture Type を Normal map に変更する。
   - Color は設定に関係なく常に透過。Mask は被覆率そのものなので対象外（常に不透明のグレースケール）。
 - インポート設定は新規作成時のみ適用し、既存ファイルの設定は変更しない。
 - 出力は現在のプレビューと同一の RenderTexture から行う（出力専用の再計算はしない）。
