@@ -126,6 +126,16 @@ namespace Dennokoworks.StitchMaker
         /// <summary>メッシュ空間のレイと表面（表向きの三角形のみ）の最近傍交点を求める。</summary>
         public bool Raycast(Ray meshSpaceRay, out Vector3 position, out Vector3 normal)
         {
+            return Raycast(meshSpaceRay, null, 0f, out position, out normal);
+        }
+
+        /// <summary>
+        /// preferredIslands（島番号で引く）のアイランドの面を優先する Raycast。最も手前の交点から passThroughDepth 以内に
+        /// 優先アイランドの交点があればその最も手前のものを、無ければ最も手前の交点を返す。preferredIslands が null なら通常の Raycast。
+        /// </summary>
+        public bool Raycast(Ray meshSpaceRay, bool[] preferredIslands, float passThroughDepth,
+            out Vector3 position, out Vector3 normal)
+        {
             const float Epsilon = 1e-12f;
             var origin = meshSpaceRay.origin;
             var direction = meshSpaceRay.direction;
@@ -135,6 +145,9 @@ namespace Dennokoworks.StitchMaker
             float bestT = float.MaxValue;
             float bestU = 0f, bestV = 0f;
             int best = -1;
+            float preferredT = float.MaxValue;
+            float preferredU = 0f, preferredV = 0f;
+            int preferred = -1;
 
             for (int i = 0; i < triangles.Length; i += 3)
             {
@@ -152,12 +165,30 @@ namespace Dennokoworks.StitchMaker
                 float v = Vector3.Dot(direction, q);
                 if (v < 0f || u + v > det) continue;
                 float t = Vector3.Dot(e2, q) / det;
-                if (t <= 0f || t >= bestT) continue;
+                if (t <= 0f) continue;
 
-                bestT = t;
-                bestU = u / det;
-                bestV = v / det;
-                best = i;
+                if (t < bestT)
+                {
+                    bestT = t;
+                    bestU = u / det;
+                    bestV = v / det;
+                    best = i;
+                }
+                if (preferredIslands != null && t < preferredT && preferredIslands[TriangleIslands[i / 3]])
+                {
+                    preferredT = t;
+                    preferredU = u / det;
+                    preferredV = v / det;
+                    preferred = i;
+                }
+            }
+
+            if (preferred >= 0 && (preferredT - bestT) * direction.magnitude <= passThroughDepth)
+            {
+                bestT = preferredT;
+                bestU = preferredU;
+                bestV = preferredV;
+                best = preferred;
             }
 
             if (best < 0)
