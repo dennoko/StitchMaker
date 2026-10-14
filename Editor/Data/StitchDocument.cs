@@ -30,14 +30,18 @@ namespace Dennokoworks.StitchMaker
         public List<StitchPath> paths = new List<StitchPath>();
         public ExportSettings export = new ExportSettings();
 
-        /// <summary>同梱マスクを割り当てた新規パスを末尾に追加する。</summary>
-        public StitchPath AddPath()
+        /// <summary>
+        /// 新規パスを末尾に追加する。template を渡すとステッチ設定とマスクを引き継ぎ（同じステッチを複数箇所に置く用途）、
+        /// 無ければ同梱マスクを割り当てる。形状とミラー設定は引き継がない。
+        /// </summary>
+        public StitchPath AddPath(StitchPath template = null)
         {
             var path = new StitchPath
             {
                 name = "Path " + (paths.Count + 1),
-                mask = FindDefaultMask(),
+                mask = template != null ? template.mask : FindDefaultMask(),
             };
+            if (template != null) path.settings = template.settings.Clone();
             paths.Add(path);
             return path;
         }

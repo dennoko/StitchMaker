@@ -103,7 +103,7 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 - **Selecting a Path**: Click a path name in the list to select it for editing.
 - **Eye Icon (Show / Hide)**: Toggles path visibility. Hidden paths are excluded from both the Scene view preview and texture export.
 - **× Button**: Deletes the selected path.
-- **+ Add Path**: Appends a new stitch path to the list.
+- **+ Add Path**: Appends a new stitch path to the list. If a path is selected, the new path inherits its stitch settings (mask, scale, length, width, thread color, etc.), which is handy for placing the same stitch in several places. The shape (control points, Closed, Bezier Handles) and mirror settings are not inherited.
 
 #### Path Editing Controls
 - **Edit Mode**: Toggles the interactive editing mode in the Scene view.

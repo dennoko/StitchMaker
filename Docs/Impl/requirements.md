@@ -200,6 +200,7 @@ classDiagram
 - `StitchPath.mirrorAxis`（`None` / `X` / `Y` / `Z`、既定 `None`）: メッシュ空間でその軸の座標が 0 の平面を対称面として、反対側にも同じステッチを描く。
 - `StitchPath.mirrorSnapRadius`（m、既定 0.03）: 鏡映した制御点を反対側の表面へ吸着させる探索半径。UI は mm で表示する。
 - ミラーの 2 項目はパスの属性であり、`StitchSettings` には入れない（プリセットを適用しても変わらない）。
+- 「+ パスを追加」でパスを追加すると、選択中のパスの `settings`（複製）と `mask` を引き継ぐ。同じステッチを複数箇所に置く用途のため。形状（ノード・`closed`・`manualHandles`）とミラーの 2 項目は引き継がない。パス未選択時（およびパス未選択のままシーンビューをクリックして自動作成したとき）は既定値と同梱の Straight マスクになる。
 
 ### 4.3 StitchDocument（`ScriptableObject`）
 - 編集中の実体はメモリ上のインスタンス（`HideFlags.DontSave`）。ウィンドウの `[SerializeField]` で保持するため、ドメインリロードとプレイモード切替をまたいで残る。エディタ終了・ウィンドウを閉じると失われる。
@@ -227,7 +228,7 @@ classDiagram
 
 | カテゴリ | プリセット | マスク | 長さ × 幅 / 間隔 (mm) | 備考 |
 | :--- | :--- | :--- | :--- | :--- |
-| 基本 | Straight | Straight | 3.0 × 0.75 / 3.6 | 新規パスの既定マスク |
+| 基本 | Straight | Straight | 3.0 × 0.75 / 3.6 | 新規パスの既定マスク（パス未選択で追加したとき） |
 | 基本 | Double | Double | 3.0 × 3.5 / 3.6 | 2 本の間隔は約 2.75mm |
 | 基本 | DoubleNarrow | DoubleNarrow | 3.0 × 1.75 / 3.6 | 2 本の間隔は 1.0mm（糸の隙間は糸 1 本分） |
 | 基本 | Triple | Triple | 3.0 × 4.0 / 3.6 | |

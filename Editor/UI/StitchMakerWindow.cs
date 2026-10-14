@@ -378,7 +378,8 @@ namespace Dennokoworks.StitchMaker
         {
             if (document == null) return;
             Undo.RecordObject(document, "Add Stitch Path");
-            var added = document.AddPath();
+            // 直前に選択していたパスのステッチ設定を引き継ぐ。
+            var added = document.AddPath(SelectedPath);
             SelectPath(document.paths.Count - 1);
             presetName = added.name;
             MarkChanged();
