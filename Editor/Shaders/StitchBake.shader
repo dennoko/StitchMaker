@@ -3,6 +3,7 @@ Shader "Hidden/dennokoworks/StitchMaker/Bake"
     Properties
     {
         _MainTex ("Source", 2D) = "black" {}
+        _Factor ("Downsample Factor", Float) = 2
         _MaskTex ("Mask", 2D) = "black" {}
         _ValidTex ("Valid", 2D) = "black" {}
         _Color ("Thread Color", Color) = (1, 1, 1, 1)
@@ -22,6 +23,19 @@ Shader "Hidden/dennokoworks/StitchMaker/Bake"
         p.y = -p.y;
     #endif
         return float4(p, 0.5, 1.0);
+    }
+
+    // Blit 系のパス（Dilate / Thumbnail / Downsample）の入力。
+    sampler2D _MainTex;
+    float4 _MainTex_TexelSize;
+
+    // Downsample（Pass 5〜7）用。出力 1 画素に対応する _Factor × _Factor 個の作業画素を、テクセル中心で読む。
+    float _Factor;
+
+    float4 DownsampleTap(float2 uv, int x, int y)
+    {
+        float2 offset = float2(x, y) - (_Factor - 1.0) * 0.5;
+        return tex2Dlod(_MainTex, float4(uv + offset * _MainTex_TexelSize.xy, 0, 0));
     }
     ENDCG
 
@@ -149,8 +163,6 @@ Shader "Hidden/dennokoworks/StitchMaker/Bake"
             #pragma vertex vert_img
             #pragma fragment frag
 
-            sampler2D _MainTex;
-            float4 _MainTex_TexelSize;
             sampler2D _ValidTex;
 
             float4 frag(v2f_img i) : SV_Target
@@ -188,7 +200,7 @@ Shader "Hidden/dennokoworks/StitchMaker/Bake"
             #pragma vertex vert_img
             #pragma fragment frag
 
-            sampler2D _MainTex;   // Color
+            // _MainTex = Color
             sampler2D _NormalTex;
 
             float4 frag(v2f_img i) : SV_Target
@@ -286,6 +298,88 @@ Shader "Hidden/dennokoworks/StitchMaker/Bake"
                 o.depth = 1.0 - GrooveLevel;
             #endif
                 return o;
+            }
+            ENDCG
+        }
+
+        // Pass 5: DownsampleColor（被覆率で重み付けした平均。被覆の無いブロックは糸色の余白を保つよう単純平均）
+        Pass
+        {
+            ZTest Always
+            ZWrite Off
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                int n = (int)_Factor;
+                float3 weighted = 0;
+                float4 sum = 0;
+                for (int y = 0; y < n; y++)
+                {
+                    for (int x = 0; x < n; x++)
+                    {
+                        float4 c = DownsampleTap(i.uv, x, y);
+                        weighted += c.rgb * c.a;
+                        sum += c;
+                    }
+                }
+                float3 rgb = sum.a > 1e-4 ? weighted / sum.a : sum.rgb / (n * n);
+                return float4(rgb, sum.a / (n * n));
+            }
+            ENDCG
+        }
+
+        // Pass 6: DownsampleNormal（アンパックして平均し、再正規化する）
+        Pass
+        {
+            ZTest Always
+            ZWrite Off
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                int n = (int)_Factor;
+                float3 sum = 0;
+                for (int y = 0; y < n; y++)
+                {
+                    for (int x = 0; x < n; x++)
+                        sum += DownsampleTap(i.uv, x, y).xyz * 2.0 - 1.0;
+                }
+                float3 normal = dot(sum, sum) > 1e-8 ? normalize(sum) : float3(0, 0, 1);
+                return float4(normal * 0.5 + 0.5, 1.0);
+            }
+            ENDCG
+        }
+
+        // Pass 7: DownsampleHeight（算術平均）
+        Pass
+        {
+            ZTest Always
+            ZWrite Off
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                int n = (int)_Factor;
+                float sum = 0;
+                for (int y = 0; y < n; y++)
+                {
+                    for (int x = 0; x < n; x++)
+                        sum += DownsampleTap(i.uv, x, y).r;
+                }
+                return float4(sum / (n * n), 0, 0, 1);
             }
             ENDCG
         }
