@@ -215,9 +215,25 @@ namespace Dennokoworks.StitchMaker
         public bool TrySnapToSurface(Vector3 origin, Vector3 normalHint, float radius,
             out Vector3 snappedPosition, out Vector3 snappedNormal)
         {
+            return Snap(origin, normalHint, radius, out snappedPosition, out snappedNormal, out _);
+        }
+
+        /// <summary>
+        /// TrySnapToSurface と同じ基準で吸着先の三角形インデックス（Triangles[3 * index] が先頭）を返す。無ければ -1。
+        /// </summary>
+        public int FindSurfaceTriangle(Vector3 position, Vector3 normalHint, float radius)
+        {
+            Snap(position, normalHint, radius, out _, out _, out int triangle);
+            return triangle;
+        }
+
+        bool Snap(Vector3 origin, Vector3 normalHint, float radius,
+            out Vector3 snappedPosition, out Vector3 snappedNormal, out int snappedTriangle)
+        {
             const float FacingThreshold = 0.2f;
             snappedPosition = origin;
             snappedNormal = normalHint;
+            snappedTriangle = -1;
             if (radius <= 0f || normalHint == Vector3.zero) return false;
 
             QueryTriangles(new Bounds(origin, Vector3.one * (radius * 2f)), snapCandidates);
@@ -234,6 +250,7 @@ namespace Dennokoworks.StitchMaker
             var rayNormal = normalHint;
             var nearestPosition = origin;
             var nearestNormal = normalHint;
+            int rayTriangle = -1, nearestTriangle = -1;
 
             foreach (int triangle in snapCandidates)
             {
@@ -259,6 +276,7 @@ namespace Dennokoworks.StitchMaker
                     {
                         bestRay = Mathf.Abs(t - radius);
                         hitRay = true;
+                        rayTriangle = triangle;
                         snappedPosition = rayOrigin + direction * t;
                         rayNormal = (Normals[i0] * (1f - u - v) + Normals[i1] * u + Normals[i2] * v).normalized;
                         if (rayNormal == Vector3.zero) rayNormal = faceNormal;
@@ -272,6 +290,7 @@ namespace Dennokoworks.StitchMaker
                 {
                     bestNearest = sqrDistance;
                     hitNearest = true;
+                    nearestTriangle = triangle;
                     nearestPosition = closest;
                     nearestNormal = faceNormal;
                 }
@@ -280,12 +299,14 @@ namespace Dennokoworks.StitchMaker
             if (hitRay)
             {
                 snappedNormal = rayNormal;
+                snappedTriangle = rayTriangle;
                 return true;
             }
             if (hitNearest)
             {
                 snappedPosition = nearestPosition;
                 snappedNormal = nearestNormal;
+                snappedTriangle = nearestTriangle;
                 return true;
             }
             return false;
