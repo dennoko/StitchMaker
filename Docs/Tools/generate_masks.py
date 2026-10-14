@@ -132,6 +132,21 @@ def triple():
     return c, False
 
 
+def double_narrow():
+    # 糸の隙間を糸 1 本分程度まで詰めた 2 本線
+    c = Canvas(192, 112)
+    for y in (24, 88):
+        straight_thread(c, y)
+    return c, False
+
+
+def triple_narrow():
+    c = Canvas(192, 176)
+    for y in (24, 88, 152):
+        straight_thread(c, y)
+    return c, False
+
+
 def thick():
     c = Canvas(320, 96)
     c.stroke([(52, 48), (268, 48)], 38, hfun=taper(0.6, 0.18), profile="full", twist=(52, 0.14, 0.9))
@@ -249,6 +264,8 @@ MASKS = {
     "Straight": straight,
     "Double": double,
     "Triple": triple,
+    "DoubleNarrow": double_narrow,
+    "TripleNarrow": triple_narrow,
     "Thick": thick,
     "Twisted": twisted,
     "FlatWaxed": flat_waxed,

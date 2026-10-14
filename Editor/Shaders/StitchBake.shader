@@ -175,5 +175,40 @@ Shader "Hidden/dennokoworks/StitchMaker/Bake"
             }
             ENDCG
         }
+
+        // Pass 3: Thumbnail（プリセット一覧用。布地色の上に Color を重ね、Normal で簡易ライティングする）
+        Pass
+        {
+            ZTest Always
+            ZWrite Off
+            Blend Off
+
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+
+            sampler2D _MainTex;   // Color
+            sampler2D _NormalTex;
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                float4 c = tex2D(_MainTex, i.uv);
+                float3 n = normalize(tex2D(_NormalTex, i.uv).xyz * 2.0 - 1.0);
+
+                // 左上からの平行光。平らな面で 1 になるよう L.z で割る。
+                float3 l = normalize(float3(-0.45, 0.55, 0.7));
+                float diffuse = saturate(dot(n, l)) / l.z;
+                float specular = pow(saturate(dot(reflect(-l, n), float3(0, 0, 1))), 24.0) * 0.3;
+                float3 thread = c.rgb * (0.35 + 0.65 * diffuse) + specular;
+
+                // 白い糸も黒い糸も見える中間グレーの布地。
+                float3 fabric = 0.44;
+            #if !defined(UNITY_COLORSPACE_GAMMA)
+                fabric = GammaToLinearSpace(fabric);
+            #endif
+                return float4(lerp(fabric, thread, c.a), 1.0);
+            }
+            ENDCG
+        }
     }
 }

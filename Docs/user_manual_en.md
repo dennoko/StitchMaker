@@ -50,7 +50,8 @@ In the Unity top menu, navigate to **`dennokoworks` > `StitchMaker`** to open th
 
 ### Step 4: Select a Preset
 1. In the **`STITCH SETTINGS`** card, click the **`Apply…`** button under **`Preset`**.
-2. Pick a built-in stitch style from the list (e.g., `Basic/Straight`, `Basic/Double`, `Decorative/Cross`, etc.).
+2. A list with thumbnails opens. Check the look and click a stitch style (e.g., `Straight`, `Double`, or `DoubleNarrow` (closely spaced double line) under `Basic`, `Cross` under `Decorative`, etc.).
+   - Each thumbnail is scaled automatically to show its stitch clearly, so thumbnails cannot be used to compare actual sizes between presets. Hover over a tile to see the actual length, width, and spacing.
 3. Adjust the **`Thread Color`** if desired.
 
 ### Step 5: Export Textures
@@ -131,7 +132,7 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 Configures the appearance and placement of stitches for the currently selected path.
 
 #### Presets
-- **Apply…**: Applies a built-in or custom user preset to the selected path.
+- **Apply…**: Opens a list of built-in and custom user presets with thumbnails, and applies the one you click to the selected path. Built-in presets are grouped by category, and your own presets are listed under "Saved".
 - **Delete…**: Deletes a saved custom preset.
 - **Folder**: Opens the user preset directory (`%APPDATA%/dennokoworks/StitchMaker/Presets`) in File Explorer / Finder for easy backup and sharing.
 - **Preset Name & Save**: Saves the current stitch parameters and mask texture as a preset under the specified name.

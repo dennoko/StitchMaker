@@ -66,6 +66,37 @@ namespace Dennokoworks.StitchMaker
                 path.mask = ImportMask(name, File.ReadAllBytes(PngPath(name)));
         }
 
+        /// <summary>保存したプリセットの設定とマスク画像を読む（サムネイル用。マスクの破棄は呼び出し側）。</summary>
+        public static StitchSettings Load(string name, out Texture2D mask)
+        {
+            mask = null;
+            if (!Exists(name)) return null;
+            var settings = JsonUtility.FromJson<StitchSettings>(File.ReadAllText(JsonPath(name)));
+            if (File.Exists(PngPath(name)))
+            {
+                // プロジェクトには取り込まず、メモリ上のテクスチャとして読む。マスクは高さなのでリニア。
+                mask = new Texture2D(2, 2, TextureFormat.RGBA32, true, true)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                    wrapMode = TextureWrapMode.Clamp,
+                };
+                if (!mask.LoadImage(File.ReadAllBytes(PngPath(name))))
+                {
+                    UnityEngine.Object.DestroyImmediate(mask);
+                    mask = null;
+                }
+            }
+            return settings;
+        }
+
+        /// <summary>保存したプリセットの最終更新時刻（サムネイルのキャッシュ判定用）。</summary>
+        public static DateTime GetLastWriteTime(string name)
+        {
+            var json = File.GetLastWriteTimeUtc(JsonPath(name));
+            var png = File.Exists(PngPath(name)) ? File.GetLastWriteTimeUtc(PngPath(name)) : DateTime.MinValue;
+            return json > png ? json : png;
+        }
+
         public static void Delete(string name)
         {
             if (File.Exists(JsonPath(name))) File.Delete(JsonPath(name));
@@ -86,6 +117,8 @@ namespace Dennokoworks.StitchMaker
         public struct BuiltInPreset
         {
             public string label;     // メニュー表示用（"カテゴリ/名前"）
+            public string category;
+            public string name;
             public string assetPath;
         }
 
@@ -106,6 +139,8 @@ namespace Dennokoworks.StitchMaker
                         preset = new BuiltInPreset
                         {
                             label = string.IsNullOrEmpty(info.category) ? name : info.category + "/" + name,
+                            category = info.category ?? "",
+                            name = name,
                             assetPath = file.Replace('\\', '/'),
                         },
                     };
@@ -122,11 +157,26 @@ namespace Dennokoworks.StitchMaker
             string json = File.ReadAllText(assetPath);
             JsonUtility.FromJsonOverwrite(json, path.settings);
 
+            var mask = LoadBuiltInMask(json);
+            if (mask != null) path.mask = mask;
+        }
+
+        /// <summary>同梱プリセットの設定と同梱マスクを読む（サムネイル用。パスへは適用しない）。</summary>
+        public static StitchSettings LoadBuiltIn(string assetPath, out Texture2D mask)
+        {
+            mask = null;
+            if (!File.Exists(assetPath)) return null;
+            string json = File.ReadAllText(assetPath);
+            mask = LoadBuiltInMask(json);
+            return JsonUtility.FromJson<StitchSettings>(json);
+        }
+
+        static Texture2D LoadBuiltInMask(string json)
+        {
             var info = JsonUtility.FromJson<BuiltInInfo>(json);
             string root = FindToolRoot();
-            if (info == null || string.IsNullOrEmpty(info.mask) || root == null) return;
-            var mask = AssetDatabase.LoadAssetAtPath<Texture2D>(root + "/Masks/" + info.mask + ".png");
-            if (mask != null) path.mask = mask;
+            if (info == null || string.IsNullOrEmpty(info.mask) || root == null) return null;
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(root + "/Masks/" + info.mask + ".png");
         }
 
         // このスクリプトの位置からツールのルートフォルダを求める（フォルダを移動されても動く）。

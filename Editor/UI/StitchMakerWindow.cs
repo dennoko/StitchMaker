@@ -98,6 +98,7 @@ namespace Dennokoworks.StitchMaker
             DisposeSnapshot();
             baker?.Dispose();
             baker = null;
+            PresetPicker.ClearCache();
         }
 
         void OnDestroy()
@@ -117,15 +118,7 @@ namespace Dennokoworks.StitchMaker
             uiReady = false;
             settingsRefreshers.Clear();
             var root = rootVisualElement;
-
-            // テーマ非依存のためのルートクラス。USS ロード失敗時も背景が明るくならないよう C# 側でも保証する。
-            root.AddToClassList("dennoko-root");
-            root.style.backgroundColor = (Color)new Color32(0x12, 0x12, 0x12, 0xFF);
-            root.style.flexGrow = 1;
-            DennokoUIFont.Apply(root);
-
-            AddStyleSheet(root, THEME_USS_GUID);
-            AddStyleSheet(root, USS_GUID);
+            ApplyTheme(root);
 
             string uxmlPath = AssetDatabase.GUIDToAssetPath(UXML_GUID);
             var uxml = string.IsNullOrEmpty(uxmlPath) ? null : AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlPath);
@@ -149,6 +142,19 @@ namespace Dennokoworks.StitchMaker
             SetStatus(Loc.T("準備完了"), StatusType.Info);
             RefreshUI();
             StartVersionCheck();
+        }
+
+        // ウィンドウとプリセット一覧ポップアップで共通のテーマ設定。
+        static void ApplyTheme(VisualElement root)
+        {
+            // テーマ非依存のためのルートクラス。USS ロード失敗時も背景が明るくならないよう C# 側でも保証する。
+            root.AddToClassList("dennoko-root");
+            root.style.backgroundColor = (Color)new Color32(0x12, 0x12, 0x12, 0xFF);
+            root.style.flexGrow = 1;
+            DennokoUIFont.Apply(root);
+
+            AddStyleSheet(root, THEME_USS_GUID);
+            AddStyleSheet(root, USS_GUID);
         }
 
         static void AddStyleSheet(VisualElement root, string guid)
@@ -826,25 +832,39 @@ namespace Dennokoworks.StitchMaker
 
         // ---------------------------------------------------------------- プリセット
 
-        // 同梱プリセット（カテゴリ別のサブメニュー）と、ユーザーが保存したプリセットを並べる。
+        // 同梱プリセット（カテゴリ別）と、ユーザーが保存したプリセットをサムネイル付きの一覧で開く。
         void ShowApplyMenu(VisualElement anchor)
         {
             var path = SelectedPath;
             if (path == null) return;
 
-            var menu = new GenericMenu();
+            var sections = new List<PresetPicker.Section>();
             foreach (var builtIn in PresetStore.GetBuiltIn())
             {
                 string assetPath = builtIn.assetPath;
-                string presetLabel = Path.GetFileNameWithoutExtension(assetPath);
-                // "カテゴリ/名前" のカテゴリ部分だけ翻訳する。
-                string label = string.Join("/", builtIn.label.Split('/').Select(Loc.T));
-                menu.AddItem(new GUIContent(Loc.T("同梱") + "/" + label), false,
-                    () => ApplyPreset(path, presetLabel, () => PresetStore.ApplyBuiltIn(assetPath, path)));
+                string presetLabel = builtIn.name;
+                // 同梱プリセットは表示順に並んでいるので、カテゴリが変わったところで見出しを切る。
+                string title = string.IsNullOrEmpty(builtIn.category) ? Loc.T("同梱") : Loc.T(builtIn.category);
+                if (sections.Count == 0 || sections[sections.Count - 1].title != title)
+                    sections.Add(new PresetPicker.Section { title = title });
+                sections[sections.Count - 1].items.Add(PresetPicker.CreateBuiltInItem(builtIn,
+                    () => ApplyPreset(path, presetLabel, () => PresetStore.ApplyBuiltIn(assetPath, path))));
             }
-            menu.AddSeparator("");
-            AddUserPresets(menu, name => ApplyPreset(path, name, () => PresetStore.Apply(name, path)));
-            menu.DropDown(anchor.worldBound);
+
+            var saved = new PresetPicker.Section
+            {
+                title = Loc.T("保存済み"),
+                emptyText = Loc.T("（保存したプリセットはありません）"),
+            };
+            foreach (var name in PresetStore.GetNames())
+            {
+                string captured = name;
+                saved.items.Add(PresetPicker.CreateUserItem(captured,
+                    () => ApplyPreset(path, captured, () => PresetStore.Apply(captured, path))));
+            }
+            sections.Add(saved);
+
+            UnityEditor.PopupWindow.Show(anchor.worldBound, new PresetPicker(sections, ApplyTheme));
         }
 
         void ShowDeleteMenu(VisualElement anchor)

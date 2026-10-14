@@ -33,7 +33,7 @@ KISS 原則に従い、以下は実装しない。必要になった時点で個
 | TGA / 16bit PNG 出力 | PNG 8bit のみ |
 | ゲームビューでのプレビュー、元マテリアルと合成した最終ルック表示 | シーンビューのオーバーレイのみ。最終ルックは出力テクスチャを割り当てて確認 |
 | ノードの複数選択 | 単一選択のみ |
-| プリセットのサムネイル生成・複製・名称変更・インポート/エクスポート | プリセットは単純なファイルなので、フォルダを開いてファイル操作で代替 |
+| プリセットの複製・名称変更・インポート/エクスポート | プリセットは単純なファイルなので、フォルダを開いてファイル操作で代替 |
 | UV1 以降・UDIM・0–1 範囲外の UV | UV0 の 0–1 範囲のみ |
 | ポーズ変更へのパス自動追従 | 編集中はポーズを固定する（変更時は手動で再スナップショット） |
 | BVH・ComputeShader・マルチスレッド | 単純な均一グリッドと通常のラスタライズで足りる（§9） |
@@ -80,8 +80,8 @@ flowchart LR
 Assets/dennokoworks/StitchMaker/
 ├─ Docs/Impl/                       設計ドキュメント
 ├─ Docs/Tools/generate_masks.py     同梱マスクの生成スクリプト（numpy + Pillow）
-├─ Masks/                           同梱マスク 16 種（§4.5）
-├─ Presets/                         同梱プリセット 17 種（§4.5）
+├─ Masks/                           同梱マスク 18 種（§4.5）
+├─ Presets/                         同梱プリセット 19 種（§4.5）
 ├─ version.json                     ローカルのバージョン（§8.5）
 └─ Editor/
    ├─ dennokoworks.StitchMaker.Editor.asmdef   （Editor プラットフォームのみ）
@@ -98,17 +98,19 @@ Assets/dennokoworks/StitchMaker/
    │  ├─ MeshSnapshot.cs            対象メッシュの複製・レイキャスト・近傍検索
    │  ├─ PathSampler.cs             曲線評価・等間隔サンプリング
    │  ├─ DecalMeshBuilder.cs        デカールメッシュ生成
-   │  └─ TextureBaker.cs            RenderTexture 描画・パディング・PNG 出力
+   │  ├─ TextureBaker.cs            RenderTexture 描画・パディング・PNG 出力
+   │  └─ PresetThumbnailRenderer.cs プリセット一覧のサムネイル描画（§8.1.1）
    ├─ UI/
    │  ├─ StitchMakerWindow.cs       EditorWindow（状態保持・UI のバインド・再構築の起点）
    │  ├─ StitchMakerWindow.uxml     ウィンドウの構造
    │  ├─ DennokoTheme.uss           dennokoworks テーマ（デザインスキルの共通ファイル）
    │  ├─ StitchMaker.uss            ツール固有のスタイル
    │  ├─ Loc.cs                     日本語 / 英語のローカライズ
+   │  ├─ PresetPicker.cs            プリセット一覧ポップアップ・サムネイルのキャッシュ（§8.1.1）
    │  ├─ ScenePathEditor.cs         シーンビューのパス編集
    │  └─ ScenePreview.cs            シーンビューのプレビュー描画
    └─ Shaders/
-      ├─ StitchBake.shader          Pass 0: Decal / 1: IslandMask / 2: Dilate
+      ├─ StitchBake.shader          Pass 0: Decal / 1: IslandMask / 2: Dilate / 3: Thumbnail
       └─ StitchPreview.shader       オーバーレイ表示
 ```
 
@@ -213,10 +215,11 @@ classDiagram
 - **保存**: パスの `settings` を JSON 化し、`mask` を RenderTexture 経由で PNG 化して書き出す（非 Readable・圧縮テクスチャでも同じ経路で扱える）。同名が存在する場合は上書き確認。
 - **適用**: JSON を読み、パスの `settings` に値をコピーする。マスク PNG は `Assets/dennokoworks/StitchMakerData/Masks/{name}_{内容ハッシュ先頭8桁}.png` へコピーして取り込み、その `Texture2D` をパスの `mask` に設定する。同じ内容のファイルが既にあれば再利用する。
 - **削除**: 2 ファイルを削除する。適用済みのパスには影響しない。
+- **読み込み（サムネイル用）**: `Load` / `LoadBuiltIn` は設定とマスクを読むだけで、パスへの適用やプロジェクトへの取り込みはしない。ユーザープリセットのマスク PNG はメモリ上の一時テクスチャとして読む。
 - 取り込んだマスクのインポート設定: sRGB OFF、圧縮なし、Wrap = Clamp、ミップマップ ON。
 
 ### 4.5 同梱マスク・同梱プリセット
-- **同梱プリセット**はツール本体の `Presets/{name}.json`。`StitchSettings` の JSON に `category`（メニューの分類）・`order`（表示順）・`mask`（`Masks/` 内のファイル名）を加えた形式で、「適用…」メニューの `同梱/カテゴリ/名前` に並ぶ。適用時の動作はユーザープリセットと同じ（値のコピー）で、削除・上書きはできない。
+- **同梱プリセット**はツール本体の `Presets/{name}.json`。`StitchSettings` の JSON に `category`（メニューの分類）・`order`（表示順）・`mask`（`Masks/` 内のファイル名）を加えた形式で、「適用…」の一覧にカテゴリごとの見出しを付けて並ぶ（§8.1.1）。適用時の動作はユーザープリセットと同じ（値のコピー）で、削除・上書きはできない。
 - **同梱マスク**は `Docs/Tools/generate_masks.py` で生成する。64 px/mm（`Twisted` のみ 128 px/mm）で描いており、プリセットの `length : width` は画像の横 : 縦と同じ比率にしてある。大きさを変えるときは `length`・`width`・`spacing` を同じ倍率で変える。
 - `normalStrength` は「盛り上がり ÷ `width`」なので、幅の広いマスク（Double や Cross など）ほど小さい値になる。
 
@@ -224,7 +227,9 @@ classDiagram
 | :--- | :--- | :--- | :--- | :--- |
 | 基本 | Straight | Straight | 3.0 × 0.75 / 3.6 | 新規パスの既定マスク |
 | 基本 | Double | Double | 3.0 × 3.5 / 3.6 | 2 本の間隔は約 2.75mm |
+| 基本 | DoubleNarrow | DoubleNarrow | 3.0 × 1.75 / 3.6 | 2 本の間隔は 1.0mm（糸の隙間は糸 1 本分） |
 | 基本 | Triple | Triple | 3.0 × 4.0 / 3.6 | |
+| 基本 | TripleNarrow | TripleNarrow | 3.0 × 2.75 / 3.6 | 隣の線との間隔は 1.0mm |
 | 基本 | Thick | Thick | 5.0 × 1.5 / 6.5 | 革用の太糸 |
 | 糸の質感 | Twisted | Twisted | 3.0 × 0.75 / 3.6 | 撚りの溝あり |
 | 糸の質感 | FlatWaxed | FlatWaxed | 4.0 × 1.25 / 5.0 | 上面が平らな平紐 |
@@ -520,7 +525,17 @@ Height = m × heightScale
 - 対象の Material はスロット番号のポップアップで選ぶ。指定スロットのサブメッシュだけがスナップショット・レイキャスト・出力の対象になる。
 - 対象 Renderer / Material の変更時と「メッシュを再取得」押下時に `MeshSnapshot` を作り直す。
 - ステッチ設定はパス未選択時には表示しない。
-- プリセットの「保存…」は名前入力、「適用…」「削除…」は名前一覧のドロップダウン、「フォルダ」は保存先をエクスプローラーで開く。
+- プリセットの「保存…」は名前入力、「適用…」はサムネイル付きの一覧（§8.1.1）、「削除…」は名前一覧のドロップダウン、「フォルダ」は保存先をエクスプローラーで開く。
+
+#### 8.1.1 プリセット一覧（`PresetPicker` / `PresetThumbnailRenderer`）
+- 「適用…」で `PopupWindowContent` のポップアップを開く。中身は UI Toolkit で、ウィンドウと同じテーマ（`.dennoko-root`・USS・フォント）を適用する。
+- 同梱プリセットをカテゴリごとの見出しの下にタイル状に並べ、最後に「保存済み」としてユーザープリセットを並べる。タイルはサムネイル + プリセット名で、クリックすると適用して閉じる。ツールチップに長さ・幅・間隔を出す。
+- サムネイルは 192 × 96 px（表示は 96 × 48）。実際のステッチを次の手順で描く。
+  1. XY 平面上の直線パス（法線 +Z）を作り、`PathSampler.Sample` で配置を求める（角度オフセット・ゆらぎ・シードも反映される）。
+  2. メッシュへの投影はせず、各ステッチを四角形 1 枚（四隅のステッチ座標 = (0,0)〜(1,1)）にして、Bake シェーダーの Decal パスで Color / Normal / Height に描く。
+  3. 縮尺はプリセットごとに自動で決める。間隔 × 4 + 1 目分の外接矩形が横幅の 92% に、1 目分の高さが縦の 80% に収まる大きい方の縮尺を使い、端の目が切れないよう中心を置ける範囲に目を並べる。
+  4. Pass 3（Thumbnail）で中間グレーの布地に Color を重ね、Normal を使って左上からの平行光で陰影を付ける。2 倍の解像度で描いてから縮小する。
+- サムネイルはファイル（同梱は JSON のパス、ユーザーは名前）ごとにメモリ上へキャッシュし、更新時刻が変わったときだけ描き直す。ウィンドウを閉じたとき（`OnDisable`）に破棄する。
 
 ### 8.2 プレビュー（`ScenePreview`）
 - シーンビューの Repaint 時に、`MeshSnapshot.Mesh` を `StitchPreview.shader` で対象メッシュの上に重ね描きする（`Graphics.DrawMeshNow`、`ZTest LEqual`、`Offset -1, -1`）。**対象の Renderer・マテリアルには触れない**ため、復元処理やシーンの Dirty 化が発生しない。

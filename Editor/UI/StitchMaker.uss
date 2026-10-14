@@ -110,3 +110,52 @@
     padding-right: 4px;
     overflow: hidden;
 }
+
+/* プリセット一覧（「適用…」のポップアップ） */
+.dennoko-root .stitch-preset-scroll {
+    flex-grow: 1;
+    padding: 4px 6px 8px 6px;
+}
+
+.dennoko-root .stitch-preset-heading {
+    -unity-font-style: bold;
+    font-size: 11px;
+    color: var(--dennoko-text-primary);
+    margin: 8px 4px 2px 4px;
+}
+
+.dennoko-root .stitch-preset-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.dennoko-root .stitch-preset-tile {
+    width: 104px;
+    margin: 3px;
+    padding: 3px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: var(--dennoko-outline);
+    background-color: var(--dennoko-surface-1);
+}
+
+.dennoko-root .stitch-preset-tile:hover {
+    background-color: var(--dennoko-surface-2);
+    border-color: var(--dennoko-text-tertiary);
+}
+
+.dennoko-root .stitch-preset-thumbnail {
+    width: 96px;
+    height: 48px;
+    border-radius: 2px;
+    background-color: var(--dennoko-surface-0);
+}
+
+.dennoko-root .stitch-preset-name {
+    font-size: 10px;
+    -unity-text-align: middle-center;
+    margin-top: 2px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}

@@ -155,6 +155,8 @@ namespace Dennokoworks.StitchMaker
             { "装飾", "Decorative" },
             { "特殊", "Special" },
             { "（保存したプリセットはありません）", "(No saved presets)" },
+            { "保存済み", "Saved" },
+            { "長さ {0:0.##} mm / 幅 {1:0.##} mm / 間隔 {2:0.##} mm", "Length {0:0.##} mm / Width {1:0.##} mm / Spacing {2:0.##} mm" },
             { "プリセットを適用しました: {0}", "Preset applied: {0}" },
             { "プリセット「{0}」を削除しますか？", "Delete the preset \"{0}\"?" },
             { "削除", "Delete" },
