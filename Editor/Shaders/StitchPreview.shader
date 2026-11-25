@@ -5,6 +5,7 @@ Shader "Hidden/dennokoworks/StitchMaker/Preview"
         _ColorTex ("Color", 2D) = "black" {}
         _NormalTex ("Normal", 2D) = "bump" {}
         _HeightTex ("Height", 2D) = "black" {}
+        _AOTex ("AO", 2D) = "white" {}
         _Mode ("Mode", Float) = 0
         _CameraPosition ("Camera Position", Vector) = (0, 0, 0, 0)
     }
@@ -28,7 +29,8 @@ Shader "Hidden/dennokoworks/StitchMaker/Preview"
             sampler2D _ColorTex;
             sampler2D _NormalTex;
             sampler2D _HeightTex;
-            float _Mode; // 0: Combined, 1: Normal, 2: Height
+            sampler2D _AOTex;
+            float _Mode; // 0: Combined, 1: Normal, 2: Height, 3: AO
             float4 _CameraPosition;
 
             struct appdata
@@ -67,6 +69,7 @@ Shader "Hidden/dennokoworks/StitchMaker/Preview"
                 float4 color = tex2D(_ColorTex, i.uv);
                 float3 n = tex2D(_NormalTex, i.uv).xyz * 2.0 - 1.0;
                 float height = tex2D(_HeightTex, i.uv).r;
+                float ao = tex2D(_AOTex, i.uv).r;
 
                 float3 worldNormal = normalize(
                     i.worldTangent * n.x + i.worldBitangent * n.y + i.worldNormal * n.z);
@@ -75,15 +78,17 @@ Shader "Hidden/dennokoworks/StitchMaker/Preview"
 
                 if (_Mode < 0.5)
                 {
-                    // 糸の無い溝は、平らな面より暗くなる分を黒い陰として重ねる。
+                    // 糸の無い凹み（溝・穴・沈み込み）は、平らな面より暗くなる分と AO の暗さの大きい方を黒い陰として重ねる。
                     float flatLit = 0.35 + 0.65 * saturate(dot(normalize(i.worldNormal), toCamera));
-                    float shadow = saturate((1.0 - lit / flatLit) * 2.0);
+                    float shadow = max(saturate((1.0 - lit / flatLit) * 2.0), 1.0 - ao);
                     float alpha = color.a + shadow * (1.0 - color.a);
                     return float4(color.rgb * lit * color.a / max(alpha, 1e-4), alpha);
                 }
                 if (_Mode < 1.5)
                     return float4(lit * 0.7, lit * 0.7, lit * 0.7, 1.0);
-                return float4(height, height, height, 1.0);
+                if (_Mode < 2.5)
+                    return float4(height, height, height, 1.0);
+                return float4(ao, ao, ao, 1.0);
             }
             ENDCG
         }

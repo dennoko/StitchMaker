@@ -40,26 +40,37 @@ namespace Dennokoworks.StitchMaker
         [SerializeField] bool editMode = true;
         [SerializeField] bool previewOn = true;
         [SerializeField] bool dirty;
+        // 読み込んだ / 保存した .asset の GUID（上書き保存の保存先）。新規ドキュメントでは空。
+        // パスでなく GUID で持ち、プロジェクト内でファイルを移動・改名しても保存先を見失わないようにする。
+        [SerializeField] string documentGuid = "";
         [SerializeField] PreviewMode previewMode = PreviewMode.Combined;
         [SerializeField] string presetName = "";
 
+        // 以下はリロードをまたがない一時的な状態。Unity はドメインリロード時に private フィールドも
+        // （[SerializeField] が無くても）保存・復元するため、[NonSerialized] を付けて持ち越さないようにする。
+        // 特に uiReady が true のまま残ると、CreateGUI より前に UI 要素（null）へ触れて NullReferenceException になる。
+
+        // ドメインリロード後に対象が外れていてパス一覧を初期化した（CreateGUI でステータスに出す）。
+        [NonSerialized] bool resetAfterReload;
         MeshSnapshot snapshot;
-        string snapshotError;
+        [NonSerialized] string snapshotError;
         TextureBaker baker;
-        bool needsRebuild;
+        [NonSerialized] bool needsRebuild;
 
         // UI 要素（CreateGUI で取得）
-        bool uiReady;
-        Label statusLabel, versionLabel, targetMessage, maskWarning;
+        [NonSerialized] bool uiReady;
+        Label statusLabel, versionLabel, targetMessage, maskWarning, holeWarning, documentPathLabel;
+        Button overwriteDocumentButton;
         IVisualElementScheduledItem statusResetSchedule;
         Button langJaButton, langEnButton, reloadButton, editModeButton;
         Button clearTargetButton, refreshMeshButton;
-        Button previewCombinedButton, previewNormalButton, previewHeightButton;
+        Button previewCombinedButton, previewNormalButton, previewHeightButton, previewAOButton;
         ObjectField targetField, maskField;
         DropdownField materialDropdown, resolutionDropdown, ssaaDropdown;
-        VisualElement pathList, settingsCard;
-        Toggle closedToggle, bezierToggle, previewToggle;
-        Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle, exportOverwriteToggle;
+        VisualElement pathList, settingsCard, reliefCard;
+        Toggle closedToggle, bezierToggle, previewToggle, holeToggle, sinkToggle;
+        Slider holeSizeSlider, holeDepthSlider, sinkWidthSlider, sinkDepthSlider;
+        Toggle exportColorToggle, exportNormalToggle, exportHeightToggle, exportMaskToggle, exportAOToggle, exportOverwriteToggle;
         Toggle exportTransparentToggle, islandToggle;
         TextField presetNameField, pathNameField, exportFolderField;
         ColorField threadColorField;
@@ -89,6 +100,14 @@ namespace Dennokoworks.StitchMaker
 
         void OnEnable()
         {
+            // ドメインリロード（コンパイル・Play モード切替）の後も、ドキュメントと対象は [SerializeField] で残る。
+            // パスは対象のメッシュ空間の座標なので、対象が外れていたら（シーンを閉じた・対象を削除したなど）パス一覧なども初期状態に戻す。
+            // Play モードへの切り替え中は対象の参照が一時的に外れることがあるので戻さない。
+            if (document != null && target == null && !EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                resetAfterReload = document.paths.Count > 0;
+                ResetDocument();
+            }
             if (document == null) document = CreateDocument();
             needsRebuild = true;
             SceneView.duringSceneGui += OnSceneGUI;
@@ -146,7 +165,9 @@ namespace Dennokoworks.StitchMaker
 
             Loc.Apply(root);
             ApplyLocalizedTooltips();
-            SetStatus(Loc.T("準備完了"), StatusType.Info);
+            if (resetAfterReload) SetStatus(Loc.T("対象が外れていたので、パス一覧を初期化しました"), StatusType.Info);
+            else SetStatus(Loc.T("準備完了"), StatusType.Info);
+            resetAfterReload = false;
             RefreshUI();
             StartVersionCheck();
         }
@@ -195,20 +216,20 @@ namespace Dennokoworks.StitchMaker
             targetField = root.Q<ObjectField>("target-field");
             targetField.RegisterValueChangedCallback(evt =>
             {
-                target = evt.newValue as Renderer;
+                var renderer = evt.newValue as Renderer;
+                if (renderer == null)
+                {
+                    // フィールドで None を選んだときも、× ボタンと同じく対象を外して初期化する（キャンセルなら元に戻す）。
+                    if (target != null && !ClearTarget()) targetField.SetValueWithoutNotify(target);
+                    return;
+                }
+                target = renderer;
                 materialIndex = 0;
                 UpdateExportFolder();
                 RefreshSnapshot();
             });
             clearTargetButton = root.Q<Button>("clear-target-button");
-            clearTargetButton.clicked += () =>
-            {
-                target = null;
-                materialIndex = 0;
-                targetField.value = null;
-                UpdateExportFolder();
-                RefreshSnapshot();
-            };
+            clearTargetButton.clicked += () => ClearTarget();
             materialDropdown = root.Q<DropdownField>("material-dropdown");
             materialDropdown.RegisterValueChangedCallback(evt =>
             {
@@ -223,8 +244,11 @@ namespace Dennokoworks.StitchMaker
             // パス
             root.Q<Button>("new-document-button").clicked += NewDocument;
             root.Q<Button>("load-document-button").clicked += LoadDocument;
-            root.Q<Button>("save-document-button").clicked += SaveDocument;
-            pathList = root.Q<VisualElement>("path-list");
+            overwriteDocumentButton = root.Q<Button>("overwrite-document-button");
+            overwriteDocumentButton.clicked += OverwriteDocument;
+            root.Q<Button>("save-document-button").clicked += SaveDocumentAs;
+            documentPathLabel = root.Q<Label>("document-path-label");
+            pathList =root.Q<VisualElement>("path-list");
             root.Q<Button>("add-path-button").clicked += AddPath;
             editModeButton = root.Q<Button>("edit-mode-button");
             editModeButton.clicked += () =>
@@ -266,6 +290,7 @@ namespace Dennokoworks.StitchMaker
             {
                 EditPath("Edit Stitch Settings", path => path.mask = evt.newValue as Texture2D);
                 RefreshMaskWarning();
+                RefreshReliefControls();
             });
             maskWarning = root.Q<Label>("mask-warning");
 
@@ -308,6 +333,26 @@ namespace Dennokoworks.StitchMaker
             bakeMirrorButton.clicked += BakeMirrorToPath;
             mirrorNote = root.Q<Label>("mirror-note");
 
+            // 穴・沈み込み
+            reliefCard = root.Q<VisualElement>("relief-card");
+            holeToggle = root.Q<Toggle>("hole-toggle");
+            holeToggle.RegisterValueChangedCallback(evt =>
+            {
+                EditPath("Edit Stitch Settings", path => path.settings.hole = evt.newValue);
+                RefreshReliefControls();
+            });
+            holeWarning = root.Q<Label>("hole-warning");
+            holeSizeSlider = BindSlider(root, "hole-size-slider", 1f, s => s.holeSize, (s, v) => s.holeSize = Mathf.Max(v, 0f));
+            holeDepthSlider = BindSlider(root, "hole-depth-slider", 1f, s => s.holeDepth, (s, v) => s.holeDepth = Mathf.Max(v, 0f));
+            sinkToggle = root.Q<Toggle>("sink-toggle");
+            sinkToggle.RegisterValueChangedCallback(evt =>
+            {
+                EditPath("Edit Stitch Settings", path => path.settings.sink = evt.newValue);
+                RefreshReliefControls();
+            });
+            sinkWidthSlider = BindSlider(root, "sink-width-slider", 1000f, s => s.sinkWidth, (s, v) => s.sinkWidth = Mathf.Max(v, 0f));
+            sinkDepthSlider = BindSlider(root, "sink-depth-slider", 1f, s => s.sinkDepth, (s, v) => s.sinkDepth = Mathf.Max(v, 0f));
+
             // プレビュー・出力
             previewToggle = root.Q<Toggle>("preview-toggle");
             previewToggle.RegisterValueChangedCallback(evt =>
@@ -319,9 +364,11 @@ namespace Dennokoworks.StitchMaker
             previewCombinedButton = root.Q<Button>("preview-combined-button");
             previewNormalButton = root.Q<Button>("preview-normal-button");
             previewHeightButton = root.Q<Button>("preview-height-button");
+            previewAOButton = root.Q<Button>("preview-ao-button");
             previewCombinedButton.clicked += () => SetPreviewMode(PreviewMode.Combined);
             previewNormalButton.clicked += () => SetPreviewMode(PreviewMode.Normal);
             previewHeightButton.clicked += () => SetPreviewMode(PreviewMode.Height);
+            previewAOButton.clicked += () => SetPreviewMode(PreviewMode.AO);
 
             resolutionDropdown = root.Q<DropdownField>("resolution-dropdown");
             resolutionDropdown.choices = ResolutionChoices;
@@ -345,6 +392,7 @@ namespace Dennokoworks.StitchMaker
             exportNormalToggle = BindExportToggle(root, "export-normal-toggle", (export, v) => export.normal = v);
             exportHeightToggle = BindExportToggle(root, "export-height-toggle", (export, v) => export.height = v);
             exportMaskToggle = BindExportToggle(root, "export-mask-toggle", (export, v) => export.mask = v);
+            exportAOToggle = BindExportToggle(root, "export-ao-toggle", (export, v) => export.ao = v);
             exportOverwriteToggle = BindExportToggle(root, "export-overwrite-toggle", (export, v) => export.overwrite = v);
             exportTransparentToggle = BindExportToggle(root, "export-transparent-toggle", (export, v) => export.transparent = v);
             exportFolderField = root.Q<TextField>("export-folder-field");
@@ -354,13 +402,14 @@ namespace Dennokoworks.StitchMaker
             root.Q<Button>("export-button").clicked += ExportTextures;
         }
 
-        void BindSlider(VisualElement root, string name, float scale,
+        Slider BindSlider(VisualElement root, string name, float scale,
             Func<StitchSettings, float> get, Action<StitchSettings, float> set)
         {
             var slider = root.Q<Slider>(name);
             slider.RegisterValueChangedCallback(evt =>
                 EditPath("Edit Stitch Settings", path => set(path.settings, evt.newValue / scale)));
             settingsRefreshers.Add(settings => slider.SetValueWithoutNotify(get(settings) * scale));
+            return slider;
         }
 
         Toggle BindExportToggle(VisualElement root, string name, Action<ExportSettings, bool> set)
@@ -391,8 +440,10 @@ namespace Dennokoworks.StitchMaker
 
         void MarkChanged()
         {
+            bool wasDirty = dirty;
             dirty = true;
             needsRebuild = true;
+            if (!wasDirty) RefreshDocumentPath();
             SceneView.RepaintAll();
         }
 
@@ -517,10 +568,18 @@ namespace Dennokoworks.StitchMaker
             langJaButton.tooltip = Loc.T("日本語で表示");
             langEnButton.tooltip = Loc.T("英語で表示");
             editModeButton.tooltip = Loc.T("シーンビューでパスを編集する（ON の間はオブジェクトを選択できません）");
+            rootVisualElement.Q<Button>("save-document-button").tooltip = Loc.T("保存先を選んで保存する（以降の上書き保存の保存先になる）");
             if (clearTargetButton != null) clearTargetButton.tooltip = Loc.T("対象の Renderer を解除");
             rootVisualElement.Q<Slider>("scale-slider").tooltip = Loc.T("長さ・幅・間隔・ゆらぎ（位置）にまとめて掛ける倍率。比率を保ったまま大きさを変える（各項目の表示値は倍率を掛ける前の値）");
             rootVisualElement.Q<Slider>("groove-width-slider").tooltip = Loc.T("パスに沿って布地を凹ませる溝の幅（0 で溝なし）。スケールも掛かる");
             rootVisualElement.Q<Slider>("groove-depth-slider").tooltip = Loc.T("溝の壁の傾き。溝は Normal にだけ出る（Height は布地の高さのまま）");
+            holeToggle.tooltip = Loc.T("糸が革に入る穴を凹みと影として描く。穴の位置（糸の端と折り返しの頂点）はマスクから自動で決まる");
+            holeSizeSlider.tooltip = Loc.T("糸の太さに対する穴の大きさの倍率（1 で糸と同じ太さの穴が、糸の先端に少し掛かる位置に開く）");
+            holeDepthSlider.tooltip = Loc.T("穴の影の濃さと凹みの強さ（Normal には「凹凸の強さ」も掛かる）");
+            sinkToggle.tooltip = Loc.T("糸に引っ張られて周りの布地が沈み込む様子を、糸の形に沿って描く");
+            sinkWidthSlider.tooltip = Loc.T("糸の縁から沈み込みが広がる距離（この距離でなだらかに 0 になる）。スケールも掛かる");
+            sinkDepthSlider.tooltip = Loc.T("糸の縁での影の濃さと凹みの強さ（Normal には「凹凸の強さ」も掛かる）");
+            exportAOToggle.tooltip = Loc.T("穴・沈み込み・溝の影をグレースケールで出力する（白 = 影なし、糸の部分は白）。透過出力では黒 + アルファになる");
             ssaaDropdown.tooltip = Loc.T("出力時に縦横 2 倍 / 4 倍の解像度で描いてから縮小し、輪郭のギザギザを抑える（通常は 2x を推奨）。プレビューには掛からない");
             exportTransparentToggle.tooltip = Loc.T("Normal / Height もステッチ以外を透過にして出力する（Color は常に透過、Mask は対象外）");
             islandToggle.tooltip = Loc.T("パスが乗っているパーツ（UV アイランド）にだけステッチを描き、上に重なった靴紐や襟などへの漏れを防ぐ。シーンビューでは手前の別パーツ越しにクリックしても、パスのパーツへ制御点を置く");
@@ -548,6 +607,7 @@ namespace Dennokoworks.StitchMaker
             RefreshMaterialDropdown();
             RefreshTargetMessage();
 
+            RefreshDocumentPath();
             RefreshPathList();
             editModeButton.EnableInClassList(ActiveClass, editMode);
 
@@ -571,13 +631,21 @@ namespace Dennokoworks.StitchMaker
                     MirrorAxisChoices[Mathf.Clamp((int)path.mirrorAxis, 0, MirrorAxisChoices.Count - 1)]);
                 mirrorSnapField.SetValueWithoutNotify(path.mirrorSnapRadius * 1000f);
             }
+            reliefCard.EnableInClassList(HiddenClass, path == null);
+            if (path != null)
+            {
+                holeToggle.SetValueWithoutNotify(path.settings.hole);
+                sinkToggle.SetValueWithoutNotify(path.settings.sink);
+            }
             RefreshMirrorControls();
             RefreshMaskWarning();
+            RefreshReliefControls();
 
             previewToggle.SetValueWithoutNotify(previewOn);
             previewCombinedButton.EnableInClassList(ActiveClass, previewMode == PreviewMode.Combined);
             previewNormalButton.EnableInClassList(ActiveClass, previewMode == PreviewMode.Normal);
             previewHeightButton.EnableInClassList(ActiveClass, previewMode == PreviewMode.Height);
+            previewAOButton.EnableInClassList(ActiveClass, previewMode == PreviewMode.AO);
 
             var export = document.export;
             resolutionDropdown.SetValueWithoutNotify(export.resolution.ToString());
@@ -588,6 +656,7 @@ namespace Dennokoworks.StitchMaker
             exportNormalToggle.SetValueWithoutNotify(export.normal);
             exportHeightToggle.SetValueWithoutNotify(export.height);
             exportMaskToggle.SetValueWithoutNotify(export.mask);
+            exportAOToggle.SetValueWithoutNotify(export.ao);
             exportOverwriteToggle.SetValueWithoutNotify(export.overwrite);
             exportTransparentToggle.SetValueWithoutNotify(export.transparent);
             exportFolderField.SetValueWithoutNotify(export.folder);
@@ -656,6 +725,20 @@ namespace Dennokoworks.StitchMaker
         {
             var path = SelectedPath;
             maskWarning.EnableInClassList(HiddenClass, path == null || path.mask != null);
+        }
+
+        // 穴・沈み込みが OFF の間は、その下の項目を無効表示にする（値は保持する）。
+        // 穴が ON でもマスクから先端が見つからない（穴が出ない）ときは注意を出す。
+        void RefreshReliefControls()
+        {
+            var path = SelectedPath;
+            bool hole = path != null && path.settings.hole;
+            bool sink = path != null && path.settings.sink;
+            holeSizeSlider.SetEnabled(hole);
+            holeDepthSlider.SetEnabled(hole);
+            holeWarning.EnableInClassList(HiddenClass, !hole || path.mask == null || HoleDetector.HasTips(path.mask));
+            sinkWidthSlider.SetEnabled(sink);
+            sinkDepthSlider.SetEnabled(sink);
         }
 
         // パス一覧は動的リストなので C# で行を生成する（見た目は USS クラスで付ける）。
@@ -1125,11 +1208,13 @@ namespace Dennokoworks.StitchMaker
             return ExportSettings.FallbackFolder;
         }
 
+        // 対象・マテリアルに合わせて出力先を既定のフォルダへ更新する。ユーザーの編集ではない自動の更新なので、
+        // 未保存の変更（dirty）にも Undo にも含めない（メッシュを指定しただけで「変更を破棄しますか」が出ないように）。
         void UpdateExportFolder()
         {
             if (document == null) return;
             string defaultFolder = GetDefaultExportFolder();
-            EditExport(export => export.folder = defaultFolder);
+            document.export.folder = defaultFolder;
             exportFolderField?.SetValueWithoutNotify(defaultFolder);
         }
 
@@ -1157,8 +1242,30 @@ namespace Dennokoworks.StitchMaker
         void NewDocument()
         {
             if (!ConfirmDiscard()) return;
-            ReplaceDocument(CreateDocument());
+            ResetDocument();
             SetStatus(Loc.T("新しいドキュメントを作成しました"), StatusType.Success);
+        }
+
+        // パス一覧・選択・上書き保存の保存先・プリセット名を新規の状態に戻す（確認はしない）。
+        void ResetDocument()
+        {
+            documentGuid = "";
+            presetName = "";
+            ReplaceDocument(CreateDocument());
+        }
+
+        // 対象を外し、パス一覧なども新規の状態に戻す。パスは対象のメッシュ空間の座標なので、対象が無いと意味を持たないため。
+        // 未保存の変更があれば確認し、キャンセルされたら何もせず false を返す。
+        bool ClearTarget()
+        {
+            if (!ConfirmDiscard()) return false;
+            target = null;
+            materialIndex = 0;
+            targetField?.SetValueWithoutNotify(null);
+            ResetDocument();
+            RefreshSnapshot();
+            SetStatus(Loc.T("対象を外したので、パス一覧を初期化しました"), StatusType.Info);
+            return true;
         }
 
         void LoadDocument()
@@ -1175,21 +1282,56 @@ namespace Dennokoworks.StitchMaker
                 return;
             }
 
-            // アセット自体は編集せず、コピーを編集対象にする。
+            // アセット自体は編集せず、コピーを編集対象にする。読み込んだアセットは上書き保存の保存先として覚えておく。
             var copy = Instantiate(asset);
             copy.name = asset.name;
             copy.hideFlags = HideFlags.DontSave;
+            documentGuid = AssetDatabase.AssetPathToGUID(assetPath);
             ReplaceDocument(copy);
             SetStatus(Loc.F("パスを読み込みました: {0}", assetPath), StatusType.Success);
         }
 
-        void SaveDocument()
+        // 上書き保存の保存先（読み込んだ / 保存した .asset）。無い、または削除されていれば null。
+        string DocumentAssetPath
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(documentGuid)) return null;
+                string assetPath = AssetDatabase.GUIDToAssetPath(documentGuid);
+                if (string.IsNullOrEmpty(assetPath) || AssetDatabase.LoadAssetAtPath<StitchDocument>(assetPath) == null) return null;
+                return assetPath;
+            }
+        }
+
+        // 読み込んだ / 保存した .asset へ、ファイルを選ばずに上書きする。保存先が無ければ「別名で保存」と同じ。
+        void OverwriteDocument()
         {
             if (document == null) return;
-            string assetPath = EditorUtility.SaveFilePanelInProject(
-                Loc.T("パスを保存"), "StitchPaths", "asset", Loc.T("保存先を指定してください。"));
-            if (string.IsNullOrEmpty(assetPath)) return;
+            string assetPath = DocumentAssetPath;
+            if (assetPath == null)
+            {
+                SaveDocumentAs();
+                return;
+            }
+            WriteDocument(assetPath);
+        }
 
+        void SaveDocumentAs()
+        {
+            if (document == null) return;
+            // 保存先を選ぶダイアログは、今の保存先のフォルダとファイル名から始める。
+            string current = DocumentAssetPath;
+            string defaultName = current != null ? Path.GetFileNameWithoutExtension(current) : "StitchPaths";
+            string folder = current != null ? Path.GetDirectoryName(current).Replace('\\', '/') : "Assets";
+            string assetPath = EditorUtility.SaveFilePanelInProject(
+                Loc.T("パスを保存"), defaultName, "asset", Loc.T("保存先を指定してください。"), folder);
+            if (string.IsNullOrEmpty(assetPath)) return;
+            WriteDocument(assetPath);
+        }
+
+        // ドキュメントを .asset に書き出し、以降の上書き保存の保存先にする。
+        void WriteDocument(string assetPath)
+        {
             var copy = Instantiate(document);
             copy.name = Path.GetFileNameWithoutExtension(assetPath);
             copy.hideFlags = HideFlags.None;
@@ -1207,8 +1349,30 @@ namespace Dennokoworks.StitchMaker
                 AssetDatabase.CreateAsset(copy, assetPath);
             }
             AssetDatabase.SaveAssets();
+            documentGuid = AssetDatabase.AssetPathToGUID(assetPath);
             dirty = false;
+            RefreshDocumentPath();
             SetStatus(Loc.F("パスを保存しました: {0}", assetPath), StatusType.Success);
+        }
+
+        // 編集中のファイル名と未保存の変更の有無を、ボタン列の下に出す。上書き保存のツールチップには保存先のパスを出す。
+        void RefreshDocumentPath()
+        {
+            if (!uiReady || documentPathLabel == null) return;
+            string assetPath = DocumentAssetPath;
+            if (assetPath == null)
+            {
+                documentPathLabel.text = Loc.T("新規ドキュメント（まだ保存していません）");
+                documentPathLabel.tooltip = "";
+                overwriteDocumentButton.tooltip = Loc.T("保存先がまだ無いので、保存先を選んで保存する");
+            }
+            else
+            {
+                documentPathLabel.text = Loc.F("編集中: {0}", Path.GetFileName(assetPath))
+                    + (dirty ? Loc.T("（未保存の変更あり）") : "");
+                documentPathLabel.tooltip = assetPath;
+                overwriteDocumentButton.tooltip = Loc.F("{0} に上書きする", assetPath);
+            }
         }
     }
 }

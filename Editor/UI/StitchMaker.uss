@@ -70,6 +70,40 @@
     color: var(--dennoko-status-error-text);
 }
 
+/* 編集中のファイル名（ボタン列の直下なので上の余白を詰める） */
+.dennoko-root .stitch-document-path {
+    margin-top: 0;
+    margin-bottom: 4px;
+    margin-left: 2px;
+}
+
+/* カードごと折りたためる見出し（穴・沈み込み）。テーマの Foldout の箱を消し、カード見出しと同じ見た目にする */
+.dennoko-root .stitch-card-foldout > .unity-foldout__toggle {
+    background-color: transparent;
+    margin: 0;
+    padding: 0 0 6px 0;
+    border-radius: 0;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--dennoko-outline);
+}
+
+.dennoko-root .stitch-card-foldout > .unity-foldout__toggle .unity-text-element {
+    font-size: 10px;
+    -unity-font-style: bold;
+    color: var(--dennoko-text-tertiary);
+}
+
+.dennoko-root .stitch-card-foldout > .unity-foldout__content {
+    margin-left: 0;
+    padding: 10px 0 0 0;
+    border-left-width: 0;
+}
+
+/* トグルの下にぶら下がる項目 */
+.dennoko-root .stitch-indent {
+    margin-left: 16px;
+}
+
 /* トグルを横に並べるときの間隔 */
 .dennoko-root .stitch-inline-toggle {
     margin-left: 10px;

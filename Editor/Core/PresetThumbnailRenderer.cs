@@ -6,7 +6,7 @@ namespace Dennokoworks.StitchMaker
 {
     /// <summary>
     /// プリセット一覧用のサムネイルを描く。平面上の直線パスにステッチを並べて Bake シェーダーの Decal パスで描き、
-    /// Normal による簡易ライティングで 1 枚に合成する。メッシュへの投影はしない。
+    /// Normal による簡易ライティングと AO（穴・沈み込み・溝の影）で 1 枚に合成する。メッシュへの投影はしない。
     /// </summary>
     public sealed class PresetThumbnailRenderer : IDisposable
     {
@@ -25,11 +25,15 @@ namespace Dennokoworks.StitchMaker
         static readonly int HeightScaleId = Shader.PropertyToID("_HeightScale");
         static readonly int NormalScaleId = Shader.PropertyToID("_NormalScale");
         static readonly int GrooveDepthId = Shader.PropertyToID("_GrooveDepth");
+        static readonly int AOTexId = Shader.PropertyToID("_AOTex");
+        static readonly int CoverageTexId = Shader.PropertyToID("_CoverageTex");
         static readonly Vector2[] Corners = { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) };
 
         readonly Material material;
         readonly Mesh mesh;
         readonly Mesh grooveMesh;
+        readonly Mesh reliefMesh;
+        readonly ReliefRenderer relief;
         readonly StitchPath path = new StitchPath();
         readonly List<StitchSample> samples = new List<StitchSample>();
         readonly List<Vector3> positions = new List<Vector3>();
@@ -48,6 +52,8 @@ namespace Dennokoworks.StitchMaker
             material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             mesh = new Mesh { name = "StitchMaker Thumbnail", hideFlags = HideFlags.HideAndDontSave };
             grooveMesh = new Mesh { name = "StitchMaker Thumbnail Groove", hideFlags = HideFlags.HideAndDontSave };
+            reliefMesh = new Mesh { name = "StitchMaker Thumbnail Relief", hideFlags = HideFlags.HideAndDontSave };
+            relief = new ReliefRenderer(material);
 
             // XY 平面上の直線。法線 +Z、接線 +X、従法線 +Y（= サムネイルの上方向）。
             path.nodes.Add(new StitchNode { normal = Vector3.forward });
@@ -56,12 +62,16 @@ namespace Dennokoworks.StitchMaker
 
         public void Dispose()
         {
+            relief.Dispose();
             UnityEngine.Object.DestroyImmediate(material);
             UnityEngine.Object.DestroyImmediate(mesh);
             UnityEngine.Object.DestroyImmediate(grooveMesh);
+            UnityEngine.Object.DestroyImmediate(reliefMesh);
         }
 
-        /// <summary>サムネイルを新しい Texture2D に描く（破棄は呼び出し側）。mask が null なら布地だけになる。</summary>
+        /// <summary>
+        /// サムネイルを新しい Texture2D に描く（破棄は呼び出し側）。mask が null なら布地だけになる。
+        /// </summary>
         public Texture2D Render(StitchSettings settings, Texture2D mask)
         {
             int w = Width * Supersample, h = Height * Supersample;
@@ -69,6 +79,8 @@ namespace Dennokoworks.StitchMaker
             var normal = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
             var height = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
             var depth = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.Depth);
+            var ao = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+            var aoComposite = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
             var lit = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
             var result = RenderTexture.GetTemporary(Width, Height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
             lit.filterMode = FilterMode.Bilinear;
@@ -77,9 +89,14 @@ namespace Dennokoworks.StitchMaker
             Clear(color, new Color(0f, 0f, 0f, 0f));
             Clear(normal, new Color(0.5f, 0.5f, 1f, 1f));
             Clear(height, Color.black);
+            Clear(ao, Color.white);
 
+            relief.BeginFrame();
             if (mask != null && BuildMesh(settings, w, h))
             {
+                // 穴の検出（マスクの読み戻し）と沈み込みフィールドの生成は RenderTarget を変えるので、MRT を設定する前に済ませる。
+                bool hasRelief = relief.Prepare(settings, mask, out var reliefSize);
+
                 colorBuffers[0] = color.colorBuffer;
                 colorBuffers[1] = normal.colorBuffer;
                 colorBuffers[2] = height.colorBuffer;
@@ -93,6 +110,16 @@ namespace Dennokoworks.StitchMaker
                     material.SetFloat(GrooveDepthId, settings.grooveDepth);
                     material.SetPass(GroovePass);
                     Graphics.DrawMeshNow(grooveMesh, Matrix4x4.identity);
+                    DrawAO(grooveMesh, ReliefRenderer.GrooveAOPass, ao, depth);
+                }
+
+                if (hasRelief)
+                {
+                    BuildQuads(reliefMesh, reliefSize.x, reliefSize.y, w, h);
+                    material.SetColor(ColorId, settings.threadColor);
+                    material.SetPass(ReliefRenderer.ReliefPass);
+                    Graphics.DrawMeshNow(reliefMesh, Matrix4x4.identity);
+                    DrawAO(reliefMesh, ReliefRenderer.ReliefAOPass, ao, depth);
                 }
 
                 float k = settings.normalStrength;
@@ -104,8 +131,14 @@ namespace Dennokoworks.StitchMaker
                 material.SetPass(DecalPass);
                 Graphics.DrawMeshNow(mesh, Matrix4x4.identity);
             }
+            relief.EndFrame();
+
+            // 糸の部分は AO を掛けない。
+            material.SetTexture(CoverageTexId, color);
+            Graphics.Blit(ao, aoComposite, material, ReliefRenderer.AOCompositePass);
 
             material.SetTexture(NormalTexId, normal);
+            material.SetTexture(AOTexId, aoComposite);
             Graphics.Blit(color, lit, material, ThumbnailPass);
             // 2 倍で描いたものをバイリニアで縮小し、輪郭のジャギーを抑える。
             Graphics.Blit(lit, result);
@@ -125,6 +158,8 @@ namespace Dennokoworks.StitchMaker
             RenderTexture.ReleaseTemporary(normal);
             RenderTexture.ReleaseTemporary(height);
             RenderTexture.ReleaseTemporary(depth);
+            RenderTexture.ReleaseTemporary(ao);
+            RenderTexture.ReleaseTemporary(aoComposite);
             RenderTexture.ReleaseTemporary(lit);
             RenderTexture.ReleaseTemporary(result);
             return texture;
@@ -159,6 +194,13 @@ namespace Dennokoworks.StitchMaker
             PathSampler.Sample(path, samples);
             if (samples.Count == 0) return false;
 
+            BuildQuads(mesh, length, width, w, h);
+            return true;
+        }
+
+        // 直前にサンプリングした各ステッチの中心に length × width の四角形を置く（四隅のステッチ座標 = (0,0)〜(1,1)）。
+        void BuildQuads(Mesh target, float length, float width, int w, int h)
+        {
             positions.Clear();
             stitchCoords.Clear();
             tangentAxes.Clear();
@@ -189,14 +231,22 @@ namespace Dennokoworks.StitchMaker
                 indices.Add(first + 3);
             }
 
-            mesh.Clear();
-            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-            mesh.SetVertices(positions);
-            mesh.SetUVs(0, stitchCoords);
-            mesh.SetUVs(1, tangentAxes);
-            mesh.SetUVs(2, bitangentAxes);
-            mesh.SetTriangles(indices, 0, false);
-            return true;
+            target.Clear();
+            target.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            target.SetVertices(positions);
+            target.SetUVs(0, stitchCoords);
+            target.SetUVs(1, tangentAxes);
+            target.SetUVs(2, bitangentAxes);
+            target.SetTriangles(indices, 0, false);
+        }
+
+        // 直前に描いたメッシュを AO ターゲットへ描き（最小値ブレンド）、描画先を MRT に戻す。
+        void DrawAO(Mesh source, int pass, RenderTexture ao, RenderTexture depth)
+        {
+            Graphics.SetRenderTarget(ao);
+            material.SetPass(pass);
+            Graphics.DrawMeshNow(source, Matrix4x4.identity);
+            Graphics.SetRenderTarget(colorBuffers, depth.depthBuffer);
         }
 
         // 溝はサムネイルの左端から右端まで 1 枚の四角形で描く（BuildMesh の縮尺を使う）。

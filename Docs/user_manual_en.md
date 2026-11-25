@@ -21,6 +21,7 @@ Supported Environments: Unity 2022.3.22f1 or later / Unity 6
    - [STITCH SETTINGS](#stitch-settings)
    - [Island Constrain](#island-constrain)
    - [Mirror Function](#mirror-function)
+   - [HOLES & SINK (AO)](#holes--sink-ao)
    - [PREVIEW / EXPORT](#preview--export)
 3. [Troubleshooting & FAQ](#troubleshooting--faq)
 
@@ -80,7 +81,7 @@ In the Unity top menu, navigate to **`dennokoworks` > `StitchMaker`** to open th
 Specifies the 3D model onto which stitches will be projected and baked.
 
 - **Renderer**: Assign a `SkinnedMeshRenderer` or `MeshRenderer` (with a `MeshFilter`).
-- **Clear**: Detaches the assigned Renderer.
+- **Clear**: Detaches the assigned Renderer. Because paths are placed on that mesh, **clearing it also resets the path list to a new document** (you are asked first if there are unsaved changes). The same reset happens if the target is missing after a script compile or similar reload.
 - **Material**: Selects which material/submesh slot on the target Renderer to draw stitches on. The default export directory is automatically inferred from the selected material's location.
 - **Reload Mesh**: Refreshes the cached mesh data. Click this if you have modified vertex positions, updated mesh imports, or toggled Read/Write settings.
 
@@ -99,7 +100,12 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 #### Document Management
 - **New**: Clears all current paths and settings to start a blank document.
 - **Load**: Loads a previously saved StitchMaker path asset (`.asset`).
-- **Save**: Saves all current paths, nodes, and export settings as an `.asset` file in your project. Useful for reusing stitch lines across outfits or creating backups.
+- **Overwrite**: Saves straight to the `.asset` you loaded (or saved before), without choosing a file. For a new document that has never been saved, it asks where to save, like **Save As**.
+- **Save As**: Saves all current paths, nodes, and export settings as an `.asset` file at a location you choose. Later **Overwrite** saves go to this file. Useful for reusing stitch lines across outfits or creating backups.
+- Below the buttons, the window shows the file you are editing (where **Overwrite** saves) and whether there are unsaved changes.
+
+> [!NOTE]
+> Changes are not saved to the `.asset` automatically. Unsaved changes are lost when you close the window or quit Unity.
 
 #### Path List
 - **Selecting a Path**: Click a path name in the list to select it for editing.
@@ -161,7 +167,7 @@ Configures the appearance and placement of stitches for the currently selected p
 | **Height** | 0 – 1 | Height scale for the stitch in the Height texture. |
 | **Normal Strength** | 0 – 2 | Intensity of bumpiness in the Normal map. |
 | **Groove Width (mm)** | 0 – 10 mm | Width of a groove pressed into the fabric along the path. 0 means no groove. Use it for stitches sunk in a channel, as seen around the welt of shoes (preset `Channel`). Scale also applies. |
-| **Groove Depth** | 0 – 2 | Steepness of the groove walls. The groove appears only in the Normal map and does not affect Color or Height (the fabric is at height 0 in the Height map, so nothing can go below it). |
+| **Groove Depth** | 0 – 2 | Steepness of the groove walls. The groove appears only in the Normal map and the AO, and does not affect Color or Height (the fabric is at height 0 in the Height map, so nothing can go below it). |
 | **Jitter: Position (mm)** | 0 – 2 mm | Adds random positional variation to each stitch for a hand-stitched, organic look. |
 | **Jitter: Angle (°)** | 0 – 30° | Adds random angular variation to each stitch. |
 | **Seed** | Integer | Random seed value for reproducible jitter generation. Changing this value produces a different jitter pattern. |
@@ -200,6 +206,32 @@ Because StitchMaker mirrors in **3D mesh space** and re-projects onto the opposi
 
 ---
 
+### HOLES & SINK (AO)
+
+On leather, the holes the thread passes through are recessed and dark, and the leather around the thread sinks slightly where it is pulled tight. The **HOLES & SINK (AO)** card (below the stitch settings) draws these dents into the **Normal map** and an **AO (shadow) texture**.
+Because they are not always wanted (for example on fabric stitches), **holes and sink are both OFF by default** (all bundled presets keep them OFF). Click the card heading to collapse it.
+
+| Parameter | Unit / Range | Description |
+| :--- | :--- | :--- |
+| **Holes** | ON / OFF | Draws the holes where the thread enters the leather as dents and shadows. **The hole positions are found from the mask automatically** (the ends of the thread and the tips of turns, as in a zigzag). |
+| **Hole Size** | 0.2 – 4 | Hole size relative to the thread thickness. At 1, a hole as wide as the thread opens just past the thread tip. |
+| **Hole Depth** | 0 – 1 | Darkness of the hole shadows and strength of the dents. Normal Strength also applies to the Normal map. |
+| **Sink** | ON / OFF | Draws the fabric sinking around the thread where it is pulled tight, following the thread's shape. |
+| **Sink Width** | 0 – 5 mm | How far the sink spreads from the edge of the thread. It fades smoothly back to the surface over this distance. Widening it does not make the dent at the thread edge shallower. Scale also applies. |
+| **Sink Depth** | 0 – 1 | Darkness of the shadow and strength of the dent at the thread's edge. Normal Strength also applies to the Normal map. |
+
+- The AO also contains the shadow of **grooves** (linked to Groove Depth), in addition to holes and sink.
+- **Thread areas get no AO** (white). The holes open just past the thread tips, so the thread does not hide them.
+- The Height map does not change (the fabric stays at height 0).
+- These settings are saved in presets.
+- Your own masks also get holes automatically, as long as the thread ends are round (or V-shaped). If Holes is ON but no positions are found, the card shows "No hole positions were found in this mask."
+- Among the bundled masks, **Overlock** gets no holes because its needle lands on top of the needle thread. **Blanket** gets a hole only at the lower end of the vertical thread, and **Chain** only at the pointed end of each loop.
+
+> [!NOTE]
+> Where the sinks of neighboring stitches overlap, the dents in the Normal map are not added together; the steeper one is used. With tight spacing and a wide sink, the dent between stitches can look shallower.
+
+---
+
 ### PREVIEW / EXPORT
 
 #### Real-time Preview
@@ -208,6 +240,7 @@ Because StitchMaker mirrors in **3D mesh space** and re-projects onto the opposi
   - **Combined**: Full shading preview showing colors, normals, and lighting combined.
   - **Normal**: Visualizes the tangent-space normal map.
   - **Height**: Visualizes the grayscale height map.
+  - **AO**: Visualizes the shadows of holes, sink, and grooves in grayscale (white = no shadow). Combined also overlays these shadows where there is no thread.
 
 #### Export Settings
 - **Resolution**: Output texture resolution (`512`, `1024`, `2048`, `4096`). Matching your garment's original texture resolution is recommended.
@@ -223,13 +256,14 @@ Because StitchMaker mirrors in **3D mesh space** and re-projects onto the opposi
   - **Normal**: Normal map texture (automatically imported as Texture Type `Normal map` in Unity).
   - **Height**: Grayscale height map (linear).
   - **Mask**: Grayscale coverage mask (white = stitch, black = background).
+  - **AO**: Shadows of holes, sink, and grooves (white = no shadow; thread areas are white). Assign it to a material's AO (Occlusion) slot or multiply it onto the base map. OFF by default.
 - **Overwrite**:
   - **ON**: Overwrites existing files with the same name.
   - **OFF**: Appends sequential numbers (`_1`, `_2`, etc.) to avoid overwriting existing textures.
 - **Transparent Outside Stitches**:
-  - **ON**: Normal and Height maps will also have transparency outside stitches (Color is always transparent). Perfect for layering on top of existing textures in image editing software. For paths with a groove, the groove remains visible in the Normal map even where there is no thread.
+  - **ON**: Normal and Height maps will also have transparency outside stitches (Color is always transparent). Perfect for layering on top of existing textures in image editing software. For paths with a groove, holes, or sink, the dents remain visible in the Normal map even where there is no thread. The AO is exported as black + alpha (shadow strength), so you can bake the shadows in just by placing it as a normal layer on top of the base map.
     - *Note: Unity's "Normal map" texture type does not treat alpha as transparency, so when this option is ON the Normal map is saved with Texture Type "Default" (sRGB OFF, Alpha Is Transparency ON). If you want to use it directly as a normal map in a shader inside Unity, change its Texture Type to "Normal map" in the import settings.*
-  - **OFF**: Fills non-stitch background with neutral normal color (#8080FF) and height black (#000000).
+  - **OFF**: Fills non-stitch background with neutral normal color (#8080FF), height black (#000000), and AO white (#FFFFFF).
 - **Output Folder**: Destination folder inside your project (`Assets/...`). Click the `...` button to choose a folder via file dialog.
 - **Export Textures**: Executes GPU baking and saves the PNG files to the specified folder. Once complete, Unity highlights the destination folder in the Project window.
 
@@ -239,6 +273,7 @@ Textures are exported using the following format:
 - `{RendererName}_Stitch_Normal.png`
 - `{RendererName}_Stitch_Height.png`
 - `{RendererName}_Stitch_Mask.png`
+- `{RendererName}_Stitch_AO.png`
 
 ---
 
@@ -270,6 +305,6 @@ Textures are exported using the following format:
 **A.** There are two primary workflows:
 1. **Compositing in Image Editors (Recommended)**:  
    Open your original garment texture in Photoshop, Clip Studio Paint, or Affinity Photo. Place `_Stitch_Color.png` on top as a normal layer, and overlay `_Stitch_Normal.png` using a normal map blending mode or combine them into a unified normal texture.  
-   *(Enabling "Transparent Outside Stitches" makes this workflow especially seamless.)*
+   *(Enabling "Transparent Outside Stitches" makes this workflow especially seamless.)* To bake in the hole and sink shadows, place `_Stitch_AO.png` (black + alpha when exported with transparency) on top as a normal layer.
 2. **Assigning to Shader Detail Slots**:  
-   If you are using shaders such as lilToon or Poiyomi, you can assign the exported stitch textures directly to "Main Color 2nd" and "Detail Normal" slots to blend them in real time without modifying original texture files.
+   If you are using shaders such as lilToon or Poiyomi, you can assign the exported stitch textures directly to "Main Color 2nd" and "Detail Normal" slots to blend them in real time without modifying original texture files. `_Stitch_AO.png` can go into an AO (Occlusion) slot or a multiply color slot.

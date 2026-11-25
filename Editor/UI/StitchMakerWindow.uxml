@@ -38,12 +38,17 @@
         <!-- パス -->
         <ui:VisualElement class="dennoko-card">
             <ui:Label text="パス" class="dennoko-section-title dennoko-card-header" />
-            <!-- 新規 / 読込 / 保存（ドキュメント全体の操作）。プレビュー表示モードと同様に幅を等分する。
+            <!-- 新規 / 読込 / 上書き保存 / 別名で保存（ドキュメント全体の操作）。プレビュー表示モードと同様に幅を等分する。
                  パス単位の操作と誤認しないよう、パス一覧より上に置く。 -->
             <ui:VisualElement class="stitch-segment-row">
                 <ui:Button name="new-document-button" text="新規" class="stitch-segment" />
                 <ui:Button name="load-document-button" text="読込" class="stitch-segment" />
-                <ui:Button name="save-document-button" text="保存" class="stitch-segment" />
+                <ui:Button name="overwrite-document-button" text="上書き保存" class="stitch-segment" />
+                <ui:Button name="save-document-button" text="別名で保存" class="stitch-segment" />
+            </ui:VisualElement>
+            <!-- 編集中のファイル（上書き保存の保存先）。文言は C# で設定する -->
+            <ui:VisualElement class="stitch-no-loc">
+                <ui:Label name="document-path-label" text="" class="stitch-message stitch-document-path" />
             </ui:VisualElement>
             <!-- 行は C# で生成する（動的リスト） -->
             <ui:VisualElement name="path-list" class="stitch-path-list stitch-no-loc" />
@@ -95,15 +100,33 @@
             <ui:Label name="mask-warning" text="マスクが未設定のパスは描画されません。" class="stitch-message stitch-message--warning" />
         </ui:VisualElement>
 
+        <!-- 穴・沈み込み（選択中のパス。パス未選択時は非表示。カードごと折りたためる） -->
+        <ui:VisualElement name="relief-card" class="dennoko-card">
+            <ui:Foldout name="relief-foldout" text="穴・沈み込み (AO)" value="true" view-data-key="stitch-relief-foldout" class="stitch-card-foldout">
+                <ui:Toggle name="hole-toggle" text="穴" />
+                <ui:VisualElement class="stitch-indent">
+                    <ui:Slider name="hole-size-slider" label="穴の大きさ" low-value="0.2" high-value="4" show-input-field="true" />
+                    <ui:Slider name="hole-depth-slider" label="穴の深さ" low-value="0" high-value="1" show-input-field="true" />
+                    <ui:Label name="hole-warning" text="このマスクでは穴の位置が見つかりません。" class="stitch-message stitch-message--warning" />
+                </ui:VisualElement>
+                <ui:Toggle name="sink-toggle" text="沈み込み" />
+                <ui:VisualElement class="stitch-indent">
+                    <ui:Slider name="sink-width-slider" label="沈み込みの幅 (mm)" low-value="0" high-value="5" show-input-field="true" />
+                    <ui:Slider name="sink-depth-slider" label="沈み込みの深さ" low-value="0" high-value="1" show-input-field="true" />
+                </ui:VisualElement>
+            </ui:Foldout>
+        </ui:VisualElement>
+
         <!-- プレビュー・出力 -->
         <ui:VisualElement class="dennoko-card">
             <ui:Label text="プレビュー・出力" class="dennoko-section-title dennoko-card-header" />
             <ui:Toggle name="preview-toggle" text="プレビュー" />
-            <!-- 表示モード。3 つのボタンが行の幅を等分する -->
+            <!-- 表示モード。4 つのボタンが行の幅を等分する -->
             <ui:VisualElement class="stitch-segment-row stitch-no-loc">
                 <ui:Button name="preview-combined-button" text="Combined" class="stitch-segment" />
                 <ui:Button name="preview-normal-button" text="Normal" class="stitch-segment" />
                 <ui:Button name="preview-height-button" text="Height" class="stitch-segment" />
+                <ui:Button name="preview-ao-button" text="AO" class="stitch-segment" />
             </ui:VisualElement>
             <ui:DropdownField name="resolution-dropdown" label="解像度" />
             <ui:SliderInt name="padding-slider" label="パディング (px)" low-value="0" high-value="16" show-input-field="true" />
@@ -116,6 +139,7 @@
                     <ui:Toggle name="export-normal-toggle" text="Normal" class="stitch-inline-toggle" />
                     <ui:Toggle name="export-height-toggle" text="Height" class="stitch-inline-toggle" />
                     <ui:Toggle name="export-mask-toggle" text="Mask" class="stitch-inline-toggle" />
+                    <ui:Toggle name="export-ao-toggle" text="AO" class="stitch-inline-toggle" />
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:Toggle name="export-overwrite-toggle" text="上書き保存" />

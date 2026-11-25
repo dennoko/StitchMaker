@@ -18,6 +18,8 @@ namespace Dennokoworks.StitchMaker
         public bool normal = true;
         public bool height = true;
         public bool mask = true;
+        // 穴・沈み込み・溝の影（白 = 影なし）。既存のドキュメントで出力ファイルが増えないよう既定は OFF。
+        public bool ao = false;
         public bool overwrite = false;
         // Normal / Height もステッチ以外を透過にして書き出す（Color は常に透過）。
         public bool transparent = false;

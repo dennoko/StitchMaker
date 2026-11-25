@@ -16,7 +16,7 @@
 - テクセル密度の偏りで、ステッチのサイズと間隔が不揃いになる。
 - 曲線に沿った配置と微調整に時間がかかる。
 
-StitchMaker は、シーンビューでメッシュ表面にパスを置き、**メートル単位**でステッチを設定し、プレビューを見ながらテクスチャ（Color / Normal / Height / Mask）を出力する。
+StitchMaker は、シーンビューでメッシュ表面にパスを置き、**メートル単位**でステッチを設定し、プレビューを見ながらテクスチャ（Color / Normal / Height / Mask / AO）を出力する。
 
 ### 1.2 達成目標
 1. **3D パス編集**: メッシュ表面のクリック・ドラッグだけで滑らかな曲線を作れる。
@@ -101,6 +101,10 @@ Assets/dennokoworks/StitchMaker/
    │  ├─ PathSampler.cs             曲線評価・等間隔サンプリング
    │  ├─ DecalMeshBuilder.cs        デカールメッシュ生成
    │  ├─ TextureBaker.cs            RenderTexture 描画・パディング・PNG 出力
+   │  ├─ HoleDetector.cs            マスクから穴の位置（糸の端・折り返しの頂点）を探す（§7.7）
+   │  ├─ ReliefRenderer.cs          穴・沈み込みの描画準備（穴のテクスチャ・沈み込みフィールドの生成・キャッシュ。§7.7）
+   │  ├─ MaskReadback.cs            マスクの画素の読み戻し（穴の検出・沈み込みフィールド用。キャッシュ付き）
+   │  ├─ DistanceField.cs           2 値画像の距離変換（Felzenszwalb）
    │  └─ PresetThumbnailRenderer.cs プリセット一覧のサムネイル描画（§8.1.1）
    ├─ UI/
    │  ├─ StitchMakerWindow.cs       EditorWindow（状態保持・UI のバインド・再構築の起点）
@@ -112,7 +116,7 @@ Assets/dennokoworks/StitchMaker/
    │  ├─ ScenePathEditor.cs         シーンビューのパス編集
    │  └─ ScenePreview.cs            シーンビューのプレビュー描画
    └─ Shaders/
-      ├─ StitchBake.shader          Pass 0: Decal / 1: IslandMask / 2: Dilate / 3: Thumbnail
+      ├─ StitchBake.shader          Pass 0〜11（§7.4）
       └─ StitchPreview.shader       オーバーレイ表示
 ```
 
@@ -161,6 +165,12 @@ classDiagram
         +float scale
         +float grooveWidth
         +float grooveDepth
+        +bool hole
+        +float holeSize
+        +float holeDepth
+        +bool sink
+        +float sinkWidth
+        +float sinkDepth
     }
     class ExportSettings {
         +int resolution
@@ -169,6 +179,7 @@ classDiagram
         +bool normal
         +bool height
         +bool mask
+        +bool ao
         +bool overwrite
         +string folder
     }
@@ -180,7 +191,7 @@ classDiagram
 
 ### 4.1 StitchSettings（`[Serializable] class`）
 数値だけを持つ。`JsonUtility` でそのままプリセットファイルになる。
-描画（`PathSampler` / `DecalMeshBuilder` / サムネイル）は `length`・`width`・`spacing`・`jitterPosition`・`grooveWidth` に `scale` を掛けた `ScaledLength` などの読み取り専用プロパティを使う。
+描画（`PathSampler` / `DecalMeshBuilder` / サムネイル）は `length`・`width`・`spacing`・`jitterPosition`・`grooveWidth`・`sinkWidth` に `scale` を掛けた `ScaledLength` などの読み取り専用プロパティを使う。
 
 | フィールド | 単位 / 範囲 | 既定値 | 内容 |
 | :--- | :--- | :--- | :--- |
@@ -196,7 +207,15 @@ classDiagram
 | `jitterAngle` | 度、0–30 | 0 | 角度の乱数ゆらぎ。0 で無効 |
 | `seed` | int | 0 | ゆらぎの乱数シード（結果を決定的にする） |
 | `grooveWidth` | m（UI は mm、0–10） | 0 | パスに沿って布地を凹ませる溝の幅。0 で溝なし（§7.5） |
-| `grooveDepth` | 0–2 | 0.5 | 溝の壁の傾き。0 で溝なし。Normal にだけ出る |
+| `grooveDepth` | 0–2 | 0.5 | 溝の壁の傾き。0 で溝なし。Normal にだけ出る（AO には溝の影として出る。§7.7） |
+| `hole` | bool | false | 穴を描く。位置はマスクから自動で決まる（§7.7） |
+| `holeSize` | 倍率、0.2–4 | 1 | 先端での糸の太さに対する穴の大きさ |
+| `holeDepth` | 0–1 | 0.5 | 穴の深さ。AO の濃さと Normal の傾きを決める |
+| `sink` | bool | false | 糸の周りの沈み込みを描く（§7.7） |
+| `sinkWidth` | m（UI は mm、0–5） | 0.001 | 糸の縁から沈み込みが広がる距離（この距離でなだらかに 0 になる）。`scale` を掛ける |
+| `sinkDepth` | 0–1 | 0.3 | 沈み込みの深さ。糸の縁での AO の濃さと Normal の傾きを決める |
+
+- 穴・沈み込みは既定で OFF。この項目が無い古いアセット・プリセットも OFF として読み込まれ、出力は変わらない。
 
 ### 4.2 StitchNode / StitchPath（`[Serializable] class`）
 - `StitchNode.position` / `normal`: メッシュ空間。`normal` はレイキャストで得た補間法線。
@@ -211,12 +230,19 @@ classDiagram
 - 「+ パスを追加」でパスを追加すると、選択中のパスの `settings`（複製）と `mask` を引き継ぐ。同じステッチを複数箇所に置く用途のため。形状（ノード・`closed`・`manualHandles`）とミラーの 2 項目・`islandConstrain` は引き継がない（既定値になる）。パス未選択時（およびパス未選択のままシーンビューをクリックして自動作成したとき）は既定値と同梱の Straight マスクになる。
 
 ### 4.3 StitchDocument（`ScriptableObject`）
-- 編集中の実体はメモリ上のインスタンス（`HideFlags.DontSave`）。ウィンドウの `[SerializeField]` で保持するため、ドメインリロードとプレイモード切替をまたいで残る。エディタ終了・ウィンドウを閉じると失われる。
+- 編集中の実体はメモリ上のインスタンス（`HideFlags.DontSave`）。ウィンドウの `[SerializeField]` で保持するため、対象の Renderer が残っている限り、ドメインリロードとプレイモード切替をまたいで残る。エディタ終了・ウィンドウを閉じると失われる。
+- **対象が無いときの初期化**: パスは対象のメッシュ空間の座標なので、対象が無ければ意味を持たない。次のときに、パス一覧・選択・上書き保存の保存先・プリセット名を新規の状態に戻す（`ResetDocument`）。
+  - 対象を外したとき（× ボタン、または対象フィールドで None を選んだとき）。未保存の変更があれば確認し、キャンセルなら対象も元のまま。
+  - ドメインリロード後の `OnEnable` で対象が外れていたとき（シーンを閉じた・対象を削除したなど）。確認は出せないので、パスがあった場合はステータスに「対象が外れていたので、パス一覧を初期化しました」と出す。Play モードへの切り替え中（`EditorApplication.isPlayingOrWillChangePlaymode`）は対象の参照が一時的に外れることがあるので初期化しない。
+  - 対象を別の Renderer に替えたときは初期化しない（別の衣装へパスを流用できるようにするため）。
 - **保存**: `Instantiate(document)` を `AssetDatabase.CreateAsset`。既存アセットへの上書きは `EditorUtility.CopySerialized` で GUID を維持する。
-- **読込**: `Instantiate(asset)` を編集対象にする。アセット自体は編集しない。
-- 未保存の変更がある状態で「新規」「読込」を行う場合は確認ダイアログを出す（ウィンドウが `bool dirty` を保持）。
+  - 「上書き保存」は、読み込んだ / 保存した `.asset` へファイルを選ばずに書き出す。保存先はウィンドウの `[SerializeField] documentGuid` に GUID で持つ（プロジェクト内で移動・改名しても見失わない）。保存先が無い（新規ドキュメント、またはアセットが削除された）ときは「別名で保存」と同じ動作にする。
+  - 「別名で保存」は保存先を選んで書き出し、以降の上書き保存の保存先をそのファイルに変える。ダイアログは今の保存先のフォルダとファイル名から始める。
+  - ボタン列の下に編集中のファイル名と未保存の変更の有無を出す（新規ドキュメントでは「まだ保存していません」）。上書き保存のツールチップに保存先のパスを出す。
+- **読込**: `Instantiate(asset)` を編集対象にする。アセット自体は編集しない。読み込んだアセットを上書き保存の保存先にする。「新規」では保存先を空にする。
+- 未保存の変更がある状態で「新規」「読込」を行う場合は確認ダイアログを出す（ウィンドウが `bool dirty` を保持）。対象・マテリアルの指定に伴う出力先フォルダの自動更新は、ユーザーの編集ではないので未保存の変更にも Undo にも含めない（メッシュを指定しただけで確認が出ないように）。
 - 対象 Renderer はシーン参照のためドキュメントには保存しない。読込後にユーザーが指定する。
-- `ExportSettings` の既定値: `resolution = 2048`、`padding = 4`、`ssaa = 2`、全マップ出力 ON、`overwrite = false`、`folder` は対象マテリアルのメインテクスチャの親フォルダ配下の `StitchMakerTexture`（メインテクスチャ未設定または Assets 外の場合はフォールバックとして `"Assets/dennokoworks/StitchMakerData/Textures"`）。
+- `ExportSettings` の既定値: `resolution = 2048`、`padding = 4`、`ssaa = 2`、AO 以外の全マップ出力 ON（AO は既存のドキュメントで出力ファイルが増えないよう OFF）、`overwrite = false`、`folder` は対象マテリアルのメインテクスチャの親フォルダ配下の `StitchMakerTexture`（メインテクスチャ未設定または Assets 外の場合はフォールバックとして `"Assets/dennokoworks/StitchMakerData/Textures"`）。
 
 ### 4.4 プリセット（`PresetStore`）
 - 保存先: `%APPDATA%/dennokoworks/StitchMaker/Presets/`（`Environment.SpecialFolder.ApplicationData`）。Unity プロジェクトをまたいで共有される。
@@ -232,6 +258,7 @@ classDiagram
 ### 4.5 同梱マスク・同梱プリセット
 - **同梱プリセット**はツール本体の `Presets/{name}.json`。`StitchSettings` の JSON に `category`（メニューの分類）・`order`（表示順）・`mask`（`Masks/` 内のファイル名）を加えた形式で、「適用…」の一覧にカテゴリごとの見出しを付けて並ぶ（§8.1.1）。適用時の動作はユーザープリセットと同じ（値のコピー）で、削除・上書きはできない。
 - **同梱マスク**は `Docs/Tools/generate_masks.py` で生成する。64 px/mm（`Twisted` のみ 128 px/mm）で描いており、プリセットの `length : width` は画像の横 : 縦と同じ比率にしてある。大きさを変えるときは `length`・`width`・`spacing` を同じ倍率で変える。
+- 同梱プリセットは、穴・沈み込みとも OFF のまま（既定値）にしてある。穴の位置はマスクから自動で決まるので、ON にすればすぐ使える（Overlock だけは穴の位置が見つからない。§7.7）。
 - `normalStrength` は「盛り上がり ÷ `width`」なので、幅の広いマスク（Double や Cross など）ほど小さい値になる。
 
 | カテゴリ | プリセット | マスク | 長さ × 幅 / 間隔 (mm) | 備考 |
@@ -259,7 +286,7 @@ classDiagram
 
 - タイル連続のマスクは「間隔 = 長さ」のときに隣と繋がる。片側だけに糸が寄るマスク（Overlock・Blanket）の向きは、角度を 180° にすると反転する。
 - **未対応**（現在の実装ではマスクと数値だけでは表現できない）:
-  - 針穴付き・空のパンチ穴 … マスクは 0 が布地の高さで、布地より低い「谷」を表せない（パスに沿って連続した溝だけは `grooveWidth` で描ける）。
+  - 空のパンチ穴 … 糸の通る穴は糸の端に自動で描ける（§7.7）が、糸の無い所に穴だけを置くことはできない。
   - パッカリング … マスク値がそのまま糸の被覆率（Color の A）になるため、糸の周囲の布のしわだけを凹凸として出せない。
   - ほつれ・たるみ … 1 本のパスは同じマスクを繰り返すため、一部のステッチだけ形を変えられない。
 
@@ -348,7 +375,7 @@ public static class DecalMeshBuilder
     // allowedIslands（null 可）に含まれないアイランドの三角形には描かない
     public static void Build(MeshSnapshot snapshot, StitchSettings settings,
         List<StitchSample> samples, bool[] allowedIslands, Mesh mesh);
-    // 各サンプルに length × width の四角形を貼る（溝用）
+    // 各サンプルに length × width の四角形を貼る（溝、穴・沈み込みの余白付きの四角形用）
     public static void Build(MeshSnapshot snapshot, float length, float width,
         List<StitchSample> samples, bool[] allowedIslands, Mesh mesh);
 }
@@ -358,9 +385,30 @@ public sealed class TextureBaker : IDisposable
     public RenderTexture Color  { get; }   // ARGB32 sRGB   : RGB = 糸色, A = 被覆率
     public RenderTexture Normal { get; }   // ARGB32 Linear : 接空間法線
     public RenderTexture Height { get; }   // R8 Linear
+    public RenderTexture AO     { get; }   // R8 Linear     : 1 = 影なし（糸の部分は 1）
     public void Render(MeshSnapshot snapshot, StitchDocument document, int ssaa);  // サンプリング〜パディング（〜縮小）まで
     public static int EffectiveSsaa(int resolution, int ssaa);                  // 作業解像度の上限を考慮した実際の倍率
     public void Export(ExportSettings export, string baseName);          // PNG 書き出し + インポート設定
+}
+
+// 穴・沈み込みの描画準備（TextureBaker とサムネイルで共用。§7.7）
+public sealed class ReliefRenderer : IDisposable
+{
+    public ReliefRenderer(Material bakeMaterial);
+    public void BeginFrame();   // EndFrame までに使われなかった沈み込みフィールド・穴のテクスチャを EndFrame で解放する
+    public void EndFrame();
+    // 穴か沈み込みがあれば Relief 系パスのプロパティを設定し、余白付きの四角形の長さ・幅を返す
+    // （マスクの読み戻しと沈み込みフィールドの生成で RenderTarget を変えるので、描画先の設定より前に呼ぶ）
+    public bool Prepare(StitchSettings settings, Texture2D mask, out Vector2 size);
+}
+
+// マスクから糸が革に入る点を探す（§7.7）。結果はマスク（インスタンス・版）ごとにキャッシュする
+public static class HoleDetector
+{
+    public struct Tip { public Vector2 position; public Vector2 normal; public float radius; }  // 検出解像度の px
+    public sealed class Result { public int width, height; public bool tileable; public Tip[] tips; }
+    public static Result Get(Texture2D mask);
+    public static bool HasTips(Texture2D mask);
 }
 ```
 
@@ -389,7 +437,7 @@ public static class ScenePathEditor
         Matrix4x4 meshToWorld, ref int selectedPath, ref int selectedNode);
 }
 
-public enum PreviewMode { Combined, Normal, Height }
+public enum PreviewMode { Combined, Normal, Height, AO }
 
 public static class ScenePreview
 {
@@ -508,6 +556,8 @@ public static class ScenePreview
 
 ### 7.4 ベイクシェーダー（`StitchBake.shader`）
 
+AO は MRT に含めず、別の R8 ターゲット（クリア値 1）に最小値ブレンドで描く（§7.7）。
+
 **Pass 0: Decal** — MRT 3 枚（Color / Normal / Height）＋深度。`Cull Off`、`ZTest LEqual`、`ZWrite On`。パスごとにマテリアルプロパティ（`_MaskTex`、`_Color`、`_HeightScale`、`_NormalScale`）を設定して 1 回描画する。
 
 ```
@@ -522,22 +572,27 @@ Height = m × heightScale
 ```
 
 - **重なりは「マスク値の高い方が勝つ」**。深度にマスク値を書くことで、3 枚のターゲットが常に同じステッチの値で揃う（クロスステッチや急カーブでの重なりが破綻しない）。
-- `m = 0` の画素も破棄せず、糸色・被覆率 0・平坦な法線を書く。これによりステッチ周囲の RGB が糸色で埋まり、バイリニア補間時の黒フチが出ない。ただし溝（Pass 4）の画素は `m = 0` より僅かに手前なので、ステッチの余白で上書きされない。
+- `m = 0` の画素も破棄せず、糸色・被覆率 0・平坦な法線を書く。これによりステッチ周囲の RGB が糸色で埋まり、バイリニア補間時の黒フチが出ない。ただし溝（Pass 4）と穴・沈み込み（Pass 8）の画素は `m = 0` より僅かに手前（深度 `0.0005 + 0.001 × 傾き`、凹み同士では傾きの大きい方が勝つ）なので、ステッチの余白で上書きされない。
 - 法線はステッチ基準の勾配から直接求めるため、UV 密度や UV の回転・反転に依存しない。出力は Unity 標準（OpenGL、+Y）とする。
 - クリア値: Color = (0,0,0,0)、Normal = (0.5,0.5,1,1)、Height = 0。
 
 **Pass 1: IslandMask** — `MeshSnapshot.Mesh` を UV 空間に描き、UV アイランド内を 1 にする（R8）。
 
-**Pass 2: Dilate** — 有効マスクが 0 の画素について、8 近傍のうち有効な画素の平均を書く。Color / Normal / Height とアイランドマスク自身に同じパスを `padding` 回適用する（1 回で 1px 拡張）。シーム上のステッチがアイランド境界で途切れてミップマップで滲むのを防ぐ。
+**Pass 2: Dilate** — 有効マスクが 0 の画素について、8 近傍のうち有効な画素の平均を書く。Color / Normal / Height / AO とアイランドマスク自身に同じパスを `padding` 回適用する（1 回で 1px 拡張）。シーム上のステッチがアイランド境界で途切れてミップマップで滲むのを防ぐ。
 
-**Pass 3: Thumbnail** — プリセット一覧のサムネイル合成（§8.1.1）。
+**Pass 3: Thumbnail** — プリセット一覧のサムネイル合成（§8.1.1）。布地の陰影に AO を掛ける。
 
 **Pass 4: Groove** — 溝（§7.5）。頂点形式は Pass 0 と同じ。
 
 **Pass 5〜7: Downsample** — SSAA（§7.6）の縮小。出力 1 画素に対応する `倍率 × 倍率` 個の作業画素をテクセル中心で読んで平均する（Box Filter、倍率は `_Factor`）。
 - Pass 5（Color）: RGB は被覆率（A）で重み付けした平均、A は単純平均。被覆の無いブロックは RGB も単純平均にし、余白の糸色を保つ（黒フチ防止）。Mask は Color の A なので同時に縮小される。
 - Pass 6（Normal）: アンパックして平均し、再正規化する（0 ベクトルなら平らな法線）。
-- Pass 7（Height）: 算術平均。
+- Pass 7（Height）: 算術平均。AO の縮小にも使う。
+
+**Pass 8〜11: 穴・沈み込み・AO**（§7.7）
+- Pass 8（Relief）: 穴・沈み込みの Normal。頂点形式は Pass 0 と同じで、ステッチ座標は余白付きの四角形を表す。凹みの無い画素は破棄する。
+- Pass 9（ReliefAO）/ Pass 10（GrooveAO）: 穴・沈み込み / 溝の AO を AO ターゲットへ描く（`BlendOp Min`、深度テストなし）。
+- Pass 11（AOComposite）: 全パスを描いた後、`AO = lerp(AO, 1, 被覆率)` で糸の部分を白に戻す。
 
 ```
 (s, t, d) = TEXCOORD0（範囲外は破棄）
@@ -547,7 +602,7 @@ slope  = grooveDepth · 6u(1−u) / 0.6 · sign(t − 0.5)   // smoothstep の�
 Color  = (糸色.rgb, 0)
 Normal = normalize((0,0,1) − slope·TEXCOORD2)
 Height = 0
-深度   = マスク値 0.001 相当
+深度   = マスク値 0.0005 + 0.001 × saturate(|slope|) 相当（穴・沈み込みと重なったら傾きの大きい方が勝つ）
 ```
 
 ### 7.5 溝（`grooveWidth > 0` かつ `grooveDepth > 0`）
@@ -557,6 +612,7 @@ Height = 0
 2. Pass 4 で Normal だけを凹ませる。Color の A と Height は布地のまま（Height は 0 = 布地なので、布地より低い値を持てない）。
 3. 続けて描くステッチの糸（`m > 0`）は溝より手前なので上に乗り、余白（`m = 0`）は溝を上書きしない。
 4. 透過出力（§8.3）では、Normal のアルファを被覆率と「法線の傾き（`(255 − B) × 24`）」の大きい方にして、糸の無い溝の部分も残す。
+5. AO には溝の影を出す（Pass 10）。底（中央 40%）を最も暗く `AO = 1 − 0.5 × grooveDepth` にし、壁で布地の明るさへ戻す。
 
 ---
 
@@ -567,6 +623,19 @@ Height = 0
 - 作業解像度の上限は `min(8192, SystemInfo.maxTextureSize)`。超える場合は倍率を 4 → 2 → 1 と半分にする（`TextureBaker.EffectiveSsaa`）。UI は倍率が下がる組み合わせで注記を出す。
 - **出力時のみ** 適用する。プレビューは編集のたびに再ベイクするため、常に 1x で描く（§9.1 の目標を守るため）。
 - 作業解像度のターゲットは出力時だけ確保し、縮小後に必ず解放する（8192px で約 1.5GB の VRAM を使うため常駐させない）。作成に失敗した場合は例外にしてステータスバーに出す。
+
+### 7.7 穴・沈み込み・AO
+詳細は [`stitch_ao_specification.md`](stitch_ao_specification.md)。レザーの「糸が入る穴の凹みと影」「糸に引かれて沈む周りの革」を Normal と AO に出す。Height は変えない（0 = 布地のまま）。
+
+- **穴**（`HasHole` = `hole` ON・`holeSize > 0`・`holeDepth > 0`）: 深さ `holeDepth × 穴のテクスチャ`。穴の位置は `HoleDetector` がマスクから探す（下記）。
+- **沈み込み**（`HasSink` = `sink` ON・`sinkWidth > 0`・`sinkDepth > 0`）: 深さ `sinkDepth × 沈み込みフィールド`。沈み込みフィールドは `ReliefRenderer` が CPU で作る。マスク（`MaskReadback`）から `sinkWidth` の余白付きキャンバス（最大辺 512px、マスクの画素より細かくしない）に糸の画素（マスク値 > 0.05）を置き、糸までの実寸の距離 `d` を距離変換（`DistanceField`。縦横の画素の大きさを別々に扱う）で求めて、`0.5 + 0.5·cos(π·d / sinkWidth)` にする（糸の縁で 1、`sinkWidth` 離れると 0。両端で傾き 0 のなだらかな形）。糸の太さや幅に関係なく、糸の縁で常に最大の深さになる。左右の端に糸があるマスク（タイル連続）は余白に隣の目の糸を繰り返して置き、継ぎ目で途切れないようにする。（マスク、長さ、幅、沈み込みの幅）ごとにキャッシュし、使われなくなったら解放する。
+- **穴の位置の検出**（`HoleDetector`）: マスクを GPU で読み戻し（最大辺 512px に縮小）、被覆率のしきい値（マスク値 0.05）の等値線をマーチングスクエアで取り出す。等値線を 0.5px 間隔に取り直して 1px のガウスで平滑化し、各点の前後「半径 r の半円の弧」の区間（r = 背景までの距離の尾根の中央値 = 糸の典型的な半径）で接線の向きが外側へ 100° 以上変わる所を先端とする。丸い端は 180°、V 字の頂点は 180° − 腕の開きになり、糸の脇のうねり・緩いカーブ・糸同士の交わり（凹んだ角）は先端にならない。先端の位置は区間の両端を結ぶ弦の外向きの法線方向に最も突き出た点、向きはその法線、糸の半径は先端から内側へ 1.5r 進む間の背景までの距離の最大。画像の端で切れた糸の先端は除き、左右の端に糸があるマスクは 3 つ横に並べて調べる。
+- **穴のテクスチャ**: 各先端に、半径 `1.0 × 糸の半径 × holeSize`（糸と同じ太さ）の円を、先端から外側へ `0.25 × 糸の半径 × holeSize` の所を中心にして描く（中心から半径の 45% までは平らな底で、縁へなめらかに浅くなる。重なりは深い方）。糸の先端は穴の内側の縁に少し掛かるだけで、穴の大部分が影として見える。マスクの外へはみ出す分は余白を付けて描き（左右に繋がるマスクは反対側へ回り込ませる）、`_HoleRect` でマスク座標から変換する。`ReliefRenderer` が（マスク、版、`holeSize`）ごとにキャッシュする。
+- 1 目ごとに、ステッチの四角形を余白（`sinkWidth` と穴のはみ出しの大きい方）だけ広げた余白付きの四角形のデカール（`DecalMeshBuilder.Build(length + 2·余白, width + 2·余白)`）で描く。沈み込みフィールドは `_SinkRect` でマスク座標から変換する。深さは `max(穴, 沈み込み)` で、深い方の勾配から法線を求める（凹みの高さの単位は糸と同じ `normalStrength × width`）。
+- **AO** = `1 − 深さ`。穴・沈み込み・溝を最小値ブレンドで描き（重なっても描く順番に依存しない）、最後に糸の部分を白に戻す。
+- 描画順はパスごとに「（穴の検出・沈み込みフィールドの生成）→ 溝 → 穴・沈み込み → 糸」。どちらも RenderTarget を変えるので、そのパスの描画より先に行う。
+- 制約: 隣り合う目の沈み込みが重なる所では、Normal の凹みは足し合わされず傾きの大きい方が使われる。
+- 制約: 針が別の糸の上に落ちるマスク（同梱では Overlock）は、先端が別の糸に埋もれて輪郭に出ないため穴が出ない。この場合 UI に注記を出す。
 
 ## 8. UI
 
@@ -581,7 +650,8 @@ Height = 0
 │   [ メッシュを再取得 ]                                    │
 ├──────────────────────────────────────────────────────────┤
 │ ▼ パス                                                   │
-│   [ 新規 ] [ 読込 ] [ 保存 ]                              │
+│   [ 新規 ] [ 読込 ] [ 上書き保存 ] [ 別名で保存 ]          │
+│   編集中: StitchPaths.asset（未保存の変更あり）           │
 │   [👁] Path 1                                      [ − ] │
 │   [👁] Path 2  ← 選択中                            [ − ] │
 │   [ + パスを追加 ]                                        │
@@ -604,11 +674,19 @@ Height = 0
 │   ゆらぎ(位置):[|===================]  0.0 mm            │
 │   ゆらぎ(角度):[|===================]  0.0 °   Seed [ 0 ]│
 ├──────────────────────────────────────────────────────────┤
+│ ▼ 穴・沈み込み (AO)        ← カードごと折りたためる        │
+│   [x] 穴                                                  │
+│       穴の大きさ: [=========|=========]  1.00             │
+│       穴の深さ:   [=========|=========]  0.50             │
+│   [ ] 沈み込み                                            │
+│       沈み込みの幅: [===|=============]  0.5 mm（無効表示）│
+│       沈み込みの深さ:[=====|===========]  0.30（無効表示） │
+├──────────────────────────────────────────────────────────┤
 │ ▼ プレビュー・出力                                        │
-│   [x] プレビュー   表示: [ Combined ▼ ]                   │
+│   [x] プレビュー   表示: [Combined][Normal][Height][AO]   │
 │   解像度: [ 2048 ▼ ]   パディング: [ 4 ] px              │
 │   アンチエイリアス: [ 2x ▼ ]                              │
-│   出力:   [x] Color  [x] Normal  [x] Height  [x] Mask    │
+│   出力:   [x] Color [x] Normal [x] Height [x] Mask [ ] AO│
 │   [ ] 上書き保存                                          │
 │   出力先: [ Assets/.../StitchMakerTexture           ] [...] │
 │   [ テクスチャを出力 ]                                    │
@@ -617,11 +695,12 @@ Height = 0
 
 - 対象の Material はスロット番号のポップアップで選ぶ。指定スロットのサブメッシュだけがスナップショット・レイキャスト・出力の対象になる。
 - 対象 Renderer / Material の変更時と「メッシュを再取得」押下時に `MeshSnapshot` を作り直す。
-- ステッチ設定はパス未選択時には表示しない。
+- ステッチ設定と「穴・沈み込み (AO)」はパス未選択時には表示しない。
+- 「穴」「沈み込み」が OFF のときは、その下の項目を無効表示にする（値は保持する）。「穴」が ON でマスクから穴の位置が見つからないときは注記を出す。
 - パス一覧の行を右クリックするとメニューを出す（`ContextualMenuManipulator`）。
   - **複製**: `StitchDocument.DuplicatePath` で形状・設定・マスク・ミラー設定ごと複製し、元の直後に挿入して選択する。名前は「元の名前 (Copy)」。
   - **ステッチ設定をコピー / 貼り付け**: `StitchSettings` とマスクをウィンドウの static フィールドへ写し、貼り付け先のパスへ複製して代入する（形状・ミラー設定・名前・表示は変えない）。何もコピーしていなければ貼り付けは無効表示。ドメインリロードで消える。
-- パスセクションの「新規・読込・保存」はドキュメント全体の操作なので、パス単位の操作（「+ パスを追加」など）と誤認しないようパス一覧より上に置く。
+- パスセクションの「新規・読込・上書き保存・別名で保存」はドキュメント全体の操作なので、パス単位の操作（「+ パスを追加」など）と誤認しないようパス一覧より上に置く。
 - プリセットの「保存…」は名前入力、「適用…」はサムネイル付きの一覧（§8.1.1）、「削除…」は名前一覧のドロップダウン、「フォルダ」は保存先をエクスプローラーで開く。
 
 #### 8.1.1 プリセット一覧（`PresetPicker` / `PresetThumbnailRenderer`）
@@ -631,7 +710,8 @@ Height = 0
   1. XY 平面上の直線パス（法線 +Z）を作り、`PathSampler.Sample` で配置を求める（角度オフセット・ゆらぎ・シードも反映される）。
   2. メッシュへの投影はせず、各ステッチを四角形 1 枚（四隅のステッチ座標 = (0,0)〜(1,1)）にして、Bake シェーダーの Decal パスで Color / Normal / Height に描く。
   3. 縮尺はプリセットごとに自動で決める。間隔 × 4 + 1 目分の外接矩形が横幅の 92% に、1 目分の高さが縦の 80% に収まる大きい方の縮尺を使い、端の目が切れないよう中心を置ける範囲に目を並べる。
-  4. Pass 3（Thumbnail）で中間グレーの布地に Color を重ね、Normal を使って左上からの平行光で陰影を付ける（布地にも陰を付けるので溝が見える）。2 倍の解像度で描いてから縮小する。
+  4. Pass 3（Thumbnail）で中間グレーの布地に Color を重ね、Normal を使って左上からの平行光で陰影を付ける（布地にも陰を付けるので溝が見える）。布地の陰影には AO（穴・沈み込み・溝の影）も掛ける。2 倍の解像度で描いてから縮小する。
+  - 穴・沈み込みが ON のプリセットは、ステッチと同じ配置で余白付きの四角形を描く（縮尺の計算には沈み込みの幅を含めない）。
   - 溝のあるプリセットは、ステッチの前に左端から右端までの四角形 1 枚で溝を描く。縦の縮尺は 1 目の高さと溝の幅の大きい方で決める。
 - サムネイルはファイル（同梱は JSON のパス、ユーザーは名前）ごとにメモリ上へキャッシュし、更新時刻が変わったときだけ描き直す。ウィンドウを閉じたとき（`OnDisable`）に破棄する。
 
@@ -642,9 +722,10 @@ Height = 0
 
 | モード | 表示 |
 | :--- | :--- |
-| Combined | ステッチ部分だけを、糸色 × 簡易ライティング（カメラ方向のヘッドライト + 環境光）で半透明合成。糸の無い溝は、平らな面より暗くなる分を黒い陰として重ねる |
+| Combined | ステッチ部分だけを、糸色 × 簡易ライティング（カメラ方向のヘッドライト + 環境光）で半透明合成。糸の無い凹み（溝・穴・沈み込み）は、平らな面より暗くなる分と `1 − AO` の大きい方を黒い陰として重ねる |
 | Normal | メッシュ全体を灰色で不透明表示し、ステッチの法線だけでライティング |
 | Height | メッシュ全体に Height をグレースケールで不透明表示 |
+| AO | メッシュ全体に AO をグレースケールで不透明表示 |
 
 ### 8.3 テクスチャ出力（`TextureBaker.Export`）
 
@@ -654,6 +735,7 @@ Height = 0
 | `{Renderer名}_Stitch_Normal.png` | 接空間法線（OpenGL、+Y） | Texture Type = Normal map（透過出力時は Default、sRGB OFF、Alpha Is Transparency ON） |
 | `{Renderer名}_Stitch_Height.png` | グレースケール（0 = 地、255 = 最も高い） | sRGB OFF |
 | `{Renderer名}_Stitch_Mask.png` | グレースケール（Color の A と同じ） | sRGB OFF |
+| `{Renderer名}_Stitch_AO.png` | グレースケール（255 = 影なし。穴・沈み込み・溝の影。糸の部分は 255）。透過出力時は RGB = 黒、A = `255 − AO` | sRGB OFF（透過出力時は Alpha Is Transparency ON） |
 
 - 出力先フォルダ:
   - 既定値は対象 Renderer の対象 Material に割り当てられているメインテクスチャ（`_MainTex` / `_BaseMap`）の配置フォルダ配下の `StitchMakerTexture/`（存在しない場合は自動作成）。
@@ -667,6 +749,7 @@ Height = 0
   - 既定値は OFF。画像編集ソフトで元のテクスチャへ重ねやすくするためのオプション。
   - **ON の場合**: Normal と Height を RGBA で書き出し、アルファに Color の A（被覆率）を入れる。Normal は溝（§7.5）も残るよう、法線が傾いている画素を傾きに応じて不透明にする。Height は Alpha Is Transparency を ON にする。
   - Texture Type = Normal map ではアルファが透過として扱われないため、透過出力時の Normal は Texture Type = Default（sRGB OFF、Alpha Is Transparency ON）で保存する。シェーダーで法線マップとして使う場合は、ユーザーが手動で Texture Type を Normal map に変更する。
+  - AO は黒 + アルファ（影の濃さ）で書き出す。画像編集ソフトでベースマップの上に通常レイヤーとして重ねるだけで焼き込める。OFF のときの不透明の AO は、乗算で重ねるかマテリアルの AO スロットに割り当てる。
   - Color は設定に関係なく常に透過。Mask は被覆率そのものなので対象外（常に不透明のグレースケール）。
 - インポート設定は新規作成時のみ適用し、既存ファイルの設定は変更しない。
 - 出力時は現在の設定でベイクし直してから書き出す（プレビューに無いアンチエイリアスを掛けるため。§7.6）。
@@ -727,7 +810,7 @@ Height = 0
 | 3 | MRT + `Graphics.DrawMeshNow` | Built-in / URP / HDRP のエディタで同じ結果になるか |
 | 4 | シーンビューへの重ね描き | URP / HDRP のシーンビューで `duringSceneGui` からの描画が正しい深度で表示されるか |
 | 5 | 非 Readable メッシュ | エディタ上で頂点配列を取得できるか（不可なら `SkinnedMeshRenderer.BakeMesh` / `Mesh.AcquireReadOnlyMeshData` を使う） |
-| 6 | メモリ上の ScriptableObject | ドメインリロード・プレイモード切替後もドキュメントと Undo 履歴が保たれるか |
+| 6 | メモリ上の ScriptableObject | 対象が残っていれば、ドメインリロード・プレイモード切替後もドキュメントと Undo 履歴が保たれるか。対象を外したとき・リロード後に対象が外れていたときは初期化されるか |
 | 7 | 深度許容 `D` | 靴・衣服の実データで、浮き沈みの吸収と裏面への映り込みのバランスが取れているか |
 
 ---

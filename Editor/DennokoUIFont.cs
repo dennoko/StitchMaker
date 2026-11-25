@@ -49,7 +49,12 @@ namespace Dennokoworks.StitchMaker
             "も傾地壁布沿深溝" +
             "ラ場所矩空：" +
             "ピ付製複貼" +
-            "エイ時縦横縮小、輪郭ギザ抑通常推奨※業限超";
+            "エイ時縦横縮小、輪郭ギザ抑通常推奨※業限超" +
+            "穴沈革影白重ね自動濃引張周様子縁広距離部分透過黒ァ" +
+            "折返決太半径割ほど" +
+            "少開" +
+            "別無降" +
+            "一覧初期化";
 
         private static FontAsset _font;
         private static bool _unavailable;     // 未搭載環境。CreateFontAsset を再試行しない

@@ -22,6 +22,7 @@ namespace Dennokoworks.StitchMaker
         static readonly int NormalScaleId = Shader.PropertyToID("_NormalScale");
         static readonly int GrooveDepthId = Shader.PropertyToID("_GrooveDepth");
         static readonly int FactorId = Shader.PropertyToID("_Factor");
+        static readonly int CoverageTexId = Shader.PropertyToID("_CoverageTex");
 
         /// <summary>ARGB32 sRGB。RGB = 糸色、A = 被覆率。</summary>
         public RenderTexture Color => output?.color;
@@ -29,12 +30,15 @@ namespace Dennokoworks.StitchMaker
         public RenderTexture Normal => output?.normal;
         /// <summary>R8 Linear。</summary>
         public RenderTexture Height => output?.height;
+        /// <summary>R8 Linear。穴・沈み込み・溝の影（1 = 影なし）。糸の部分は 1。</summary>
+        public RenderTexture AO => output?.ao;
 
         // 出力解像度のターゲット。プレビューと書き出しが参照する。
         Targets output;
 
         readonly Material material;
         readonly Mesh decalMesh;
+        readonly ReliefRenderer relief;
         readonly List<StitchSample> samples = new List<StitchSample>();
         readonly RenderBuffer[] colorBuffers = new RenderBuffer[3];
 
@@ -45,12 +49,14 @@ namespace Dennokoworks.StitchMaker
                 throw new InvalidOperationException("シェーダー " + ShaderName + " が見つかりません。");
             material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             decalMesh = new Mesh { name = "StitchMaker Decal", hideFlags = HideFlags.HideAndDontSave };
+            relief = new ReliefRenderer(material);
         }
 
         public void Dispose()
         {
             output?.Dispose();
             output = null;
+            relief.Dispose();
             UnityEngine.Object.DestroyImmediate(material);
             UnityEngine.Object.DestroyImmediate(decalMesh);
         }
@@ -102,6 +108,7 @@ namespace Dennokoworks.StitchMaker
                 Graphics.Blit(work.color, output.color, material, DownsampleColorPass);
                 Graphics.Blit(work.normal, output.normal, material, DownsampleNormalPass);
                 Graphics.Blit(work.height, output.height, material, DownsampleHeightPass);
+                Graphics.Blit(work.ao, output.ao, material, DownsampleHeightPass);
             }
             finally
             {
@@ -110,19 +117,18 @@ namespace Dennokoworks.StitchMaker
             }
         }
 
-        // ステッチと溝を描き、アイランドマスクを作って padding 回 Dilate する。
+        // ステッチ・溝・穴・沈み込みを描き、AO の糸の部分を白に戻し、アイランドマスクを作って padding 回 Dilate する。
         void Draw(Targets t, MeshSnapshot snapshot, StitchDocument document, int padding)
         {
             Clear(t.color, new UnityEngine.Color(0f, 0f, 0f, 0f));
             Clear(t.normal, new UnityEngine.Color(0.5f, 0.5f, 1f, 1f));
             Clear(t.height, UnityEngine.Color.black);
+            Clear(t.ao, UnityEngine.Color.white);
 
-            colorBuffers[0] = t.color.colorBuffer;
-            colorBuffers[1] = t.normal.colorBuffer;
-            colorBuffers[2] = t.height.colorBuffer;
-            Graphics.SetRenderTarget(colorBuffers, t.depth.depthBuffer);
+            SetDrawTarget(t);
             GL.Clear(true, false, UnityEngine.Color.clear, 1f);
 
+            relief.BeginFrame();
             for (int i = 0; i < document.paths.Count; i++)
             {
                 var path = document.paths[i];
@@ -130,10 +136,24 @@ namespace Dennokoworks.StitchMaker
 
                 var settings = path.settings;
                 var islands = IslandFilter.Collect(path, snapshot);
-                if (settings.HasGroove) DrawGroove(snapshot, path, islands);
+                // 穴の検出（マスクの読み戻し）と沈み込みフィールドの生成は RenderTarget を変えるので、このパスの描画より先に済ませる。
+                bool hasRelief = relief.Prepare(settings, path.mask, out var reliefSize);
+                SetDrawTarget(t);
+                if (settings.HasGroove) DrawGroove(t, snapshot, path, islands);
 
                 PathSampler.Sample(path, samples, i, snapshot);
                 if (samples.Count == 0) continue;
+
+                // 穴・沈み込みは余白付きの四角形で描く。糸より奥に置くので、描く順番は結果に影響しない。
+                if (hasRelief)
+                {
+                    DecalMeshBuilder.Build(snapshot, reliefSize.x, reliefSize.y, samples, islands, decalMesh);
+                    material.SetColor(ColorId, settings.threadColor);
+                    material.SetPass(ReliefRenderer.ReliefPass);
+                    Graphics.DrawMeshNow(decalMesh, Matrix4x4.identity);
+                    DrawAO(t, ReliefRenderer.ReliefAOPass);
+                }
+
                 DecalMeshBuilder.Build(snapshot, settings, samples, islands, decalMesh);
 
                 float k = settings.normalStrength;
@@ -145,6 +165,12 @@ namespace Dennokoworks.StitchMaker
                 material.SetPass(DecalPass);
                 Graphics.DrawMeshNow(decalMesh, Matrix4x4.identity);
             }
+            relief.EndFrame();
+
+            // 糸の部分は AO を掛けない（糸に覆われた穴の部分も白に戻す）。
+            material.SetTexture(CoverageTexId, t.color);
+            Graphics.Blit(t.ao, t.aoTemp, material, ReliefRenderer.AOCompositePass);
+            (t.ao, t.aoTemp) = (t.aoTemp, t.ao);
 
             Clear(t.valid, UnityEngine.Color.black);
             material.SetPass(IslandMaskPass);
@@ -156,12 +182,30 @@ namespace Dennokoworks.StitchMaker
                 Dilate(ref t.color, ref t.colorTemp);
                 Dilate(ref t.normal, ref t.normalTemp);
                 Dilate(ref t.height, ref t.heightTemp);
+                Dilate(ref t.ao, ref t.aoTemp);
                 Dilate(ref t.valid, ref t.validTemp);
             }
         }
 
+        void SetDrawTarget(Targets t)
+        {
+            colorBuffers[0] = t.color.colorBuffer;
+            colorBuffers[1] = t.normal.colorBuffer;
+            colorBuffers[2] = t.height.colorBuffer;
+            Graphics.SetRenderTarget(colorBuffers, t.depth.depthBuffer);
+        }
+
+        // 直前に描いたデカールメッシュを AO ターゲットへ描き（最小値ブレンド）、描画先を MRT に戻す。
+        void DrawAO(Targets t, int pass)
+        {
+            Graphics.SetRenderTarget(t.ao);
+            material.SetPass(pass);
+            Graphics.DrawMeshNow(decalMesh, Matrix4x4.identity);
+            SetDrawTarget(t);
+        }
+
         // 溝は幅の半分ごとに区切り、隣と半分ずつ重なる四角形で途切れなく覆う。
-        void DrawGroove(MeshSnapshot snapshot, StitchPath path, bool[] islands)
+        void DrawGroove(Targets t, MeshSnapshot snapshot, StitchPath path, bool[] islands)
         {
             float width = path.settings.ScaledGrooveWidth;
             float step = width * 0.5f;
@@ -173,6 +217,7 @@ namespace Dennokoworks.StitchMaker
             material.SetFloat(GrooveDepthId, path.settings.grooveDepth);
             material.SetPass(GroovePass);
             Graphics.DrawMeshNow(decalMesh, Matrix4x4.identity);
+            DrawAO(t, ReliefRenderer.GrooveAOPass);
         }
 
         /// <summary>現在の RenderTexture を PNG として書き出す。新規ファイルにのみインポート設定を適用する。</summary>
@@ -244,6 +289,16 @@ namespace Dennokoworks.StitchMaker
                 var texture = ReadGray(Color, true);
                 Write(prefix + "Mask" + suffix + ".png", texture, importer => importer.sRGBTexture = false);
             }
+            if (export.ao)
+            {
+                // 透過出力では黒 + アルファ（影の濃さ）にし、画像編集ソフトで通常レイヤーとして重ねるだけで焼き込めるようにする。
+                var texture = export.transparent ? ReadShadow(AO) : ReadGray(AO, false);
+                Write(prefix + "AO" + suffix + ".png", texture, importer =>
+                {
+                    importer.sRGBTexture = false;
+                    importer.alphaIsTransparency = export.transparent;
+                });
+            }
         }
 
         static string GetUniqueSuffix(ExportSettings export, string folder, string baseName)
@@ -257,6 +312,7 @@ namespace Dennokoworks.StitchMaker
                 if (export.normal && File.Exists(Path.Combine(folder, baseName + "_Stitch_Normal" + s + ".png"))) return true;
                 if (export.height && File.Exists(Path.Combine(folder, baseName + "_Stitch_Height" + s + ".png"))) return true;
                 if (export.mask && File.Exists(Path.Combine(folder, baseName + "_Stitch_Mask" + s + ".png"))) return true;
+                if (export.ao && File.Exists(Path.Combine(folder, baseName + "_Stitch_AO" + s + ".png"))) return true;
                 return false;
             }
 
@@ -342,6 +398,18 @@ namespace Dennokoworks.StitchMaker
             return gray;
         }
 
+        // AO を「RGB = 黒、A = 1 − AO」で読む。
+        static Texture2D ReadShadow(RenderTexture ao)
+        {
+            var rgba = Read(ao, TextureFormat.RGBA32, true);
+            var pixels = rgba.GetPixels32();
+            for (int i = 0; i < pixels.Length; i++)
+                pixels[i] = new Color32(0, 0, 0, (byte)(255 - pixels[i].r));
+            rgba.SetPixels32(pixels);
+            rgba.Apply();
+            return rgba;
+        }
+
         static void Write(string path, Texture2D texture, Action<TextureImporter> setup)
         {
             var png = texture.EncodeToPNG();
@@ -363,8 +431,8 @@ namespace Dennokoworks.StitchMaker
         sealed class Targets : IDisposable
         {
             public readonly int resolution;
-            public RenderTexture color, normal, height, valid;
-            public RenderTexture colorTemp, normalTemp, heightTemp, validTemp;
+            public RenderTexture color, normal, height, ao, valid;
+            public RenderTexture colorTemp, normalTemp, heightTemp, aoTemp, validTemp;
             public RenderTexture depth;
 
             public Targets(int resolution)
@@ -389,6 +457,8 @@ namespace Dennokoworks.StitchMaker
                 normalTemp = Create(resolution, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
                 height = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
                 heightTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+                ao = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
+                aoTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
                 valid = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
                 validTemp = Create(resolution, RenderTextureFormat.R8, RenderTextureReadWrite.Linear);
                 depth = new RenderTexture(resolution, resolution, 24, RenderTextureFormat.Depth)
@@ -408,10 +478,12 @@ namespace Dennokoworks.StitchMaker
                 Release(normalTemp);
                 Release(height);
                 Release(heightTemp);
+                Release(ao);
+                Release(aoTemp);
                 Release(valid);
                 Release(validTemp);
                 Release(depth);
-                color = colorTemp = normal = normalTemp = height = heightTemp = valid = validTemp = depth = null;
+                color = colorTemp = normal = normalTemp = height = heightTemp = ao = aoTemp = valid = validTemp = depth = null;
             }
         }
     }

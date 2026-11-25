@@ -7,6 +7,7 @@ namespace Dennokoworks.StitchMaker
         Combined,
         Normal,
         Height,
+        AO,
     }
 
     /// <summary>
@@ -19,6 +20,7 @@ namespace Dennokoworks.StitchMaker
         static readonly int ColorTexId = Shader.PropertyToID("_ColorTex");
         static readonly int NormalTexId = Shader.PropertyToID("_NormalTex");
         static readonly int HeightTexId = Shader.PropertyToID("_HeightTex");
+        static readonly int AOTexId = Shader.PropertyToID("_AOTex");
         static readonly int ModeId = Shader.PropertyToID("_Mode");
         static readonly int CameraPositionId = Shader.PropertyToID("_CameraPosition");
 
@@ -42,6 +44,7 @@ namespace Dennokoworks.StitchMaker
             material.SetTexture(ColorTexId, baker.Color);
             material.SetTexture(NormalTexId, baker.Normal);
             material.SetTexture(HeightTexId, baker.Height);
+            material.SetTexture(AOTexId, baker.AO);
             material.SetFloat(ModeId, (float)mode);
             material.SetVector(CameraPositionId, camera.transform.position);
             material.SetPass(0);
