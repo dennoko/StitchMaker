@@ -92,8 +92,9 @@ Assets/dennokoworks/StitchMaker/
    │  ├─ StitchSettings.cs          ステッチの数値設定（JSON 化可能）
    │  ├─ StitchPath.cs              StitchNode / StitchPath
    │  ├─ StitchDocument.cs          ScriptableObject（パス一覧 + 出力設定）
-   │  ├─ PresetStore.cs             プリセットのファイル入出力（ユーザー / 同梱）
-   │  └─ MaskImportSettings.cs      同梱マスクのインポート設定を固定（sRGB OFF・非圧縮）
+   │  └─ PresetStore.cs             プリセットのファイル入出力（ユーザー / 同梱）
+   │     ※ 同梱マスク（Masks/）のインポート設定（sRGB OFF・非圧縮）は .meta に保存して配布する。
+   │       テクスチャ用 AssetPostprocessor は登録しない（導入・更新のたびに全テクスチャが再インポートされるため）
    ├─ Core/
    │  ├─ MeshSnapshot.cs            対象メッシュの複製・レイキャスト・近傍検索・UV アイランド検出
    │  ├─ IslandFilter.cs            アイランド限定で描いてよい UV アイランドの算出（§7.3）
