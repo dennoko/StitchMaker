@@ -36,6 +36,11 @@ namespace Dennokoworks.StitchMaker
         [SerializeField] Renderer target;
         [SerializeField] int materialIndex;
         [SerializeField] int selectedPath = -1;
+        // パス一覧の複数選択（Ctrl / Shift + クリック）。selectedPath（設定欄・シーン編集の対象）を必ず含む。
+        // 番号で持つので、パスの追加・削除・並びが変わる操作では selectedPath だけの選択に戻す。
+        [SerializeField] List<int> selectedPaths = new List<int>();
+        // Shift + クリックの範囲選択の起点
+        [SerializeField] int selectionAnchor = -1;
         [SerializeField] int selectedNode = -1;
         [SerializeField] bool editMode = true;
         [SerializeField] bool previewOn = true;
@@ -465,7 +470,13 @@ namespace Dennokoworks.StitchMaker
             evt.menu.AppendAction(Loc.T("複製"), _ => DuplicatePath(index));
             evt.menu.AppendSeparator();
             evt.menu.AppendAction(Loc.T("ステッチ設定をコピー"), _ => CopyStitchSettings(index));
-            evt.menu.AppendAction(Loc.T("ステッチ設定を貼り付け"), _ => PasteStitchSettings(index),
+            // 複数選択中の行で開いたときは、選択中のパスすべてへ貼り付ける。選択外の行ならその行だけ。
+            var targets = SelectedPathIndices();
+            if (!targets.Contains(index)) targets = new List<int> { index };
+            string label = targets.Count > 1
+                ? Loc.F("ステッチ設定を貼り付け（選択中の {0} 本）", targets.Count)
+                : Loc.T("ステッチ設定を貼り付け");
+            evt.menu.AppendAction(label, _ => PasteStitchSettings(targets),
                 _ => copiedSettings != null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
         }
 
@@ -490,16 +501,29 @@ namespace Dennokoworks.StitchMaker
             SetStatus(Loc.F("ステッチ設定をコピーしました: {0}", path.name), StatusType.Success);
         }
 
-        void PasteStitchSettings(int index)
+        // コピーしたステッチ設定とマスクを、指定したパスすべてへ貼り付ける（Undo は 1 回分）。
+        void PasteStitchSettings(List<int> indices)
         {
-            if (document == null || copiedSettings == null || index < 0 || index >= document.paths.Count) return;
-            var path = document.paths[index];
+            if (document == null || copiedSettings == null) return;
+            var paths = new List<StitchPath>();
+            foreach (int index in indices)
+            {
+                if (index >= 0 && index < document.paths.Count) paths.Add(document.paths[index]);
+            }
+            if (paths.Count == 0) return;
+
             Undo.RecordObject(document, "Paste Stitch Settings");
-            path.settings = copiedSettings.Clone();
-            path.mask = copiedMask;
+            foreach (var path in paths)
+            {
+                path.settings = copiedSettings.Clone();
+                path.mask = copiedMask;
+            }
             MarkChanged();
             RefreshUI();
-            SetStatus(Loc.F("ステッチ設定を貼り付けました: {0}", path.name), StatusType.Success);
+            SetStatus(paths.Count > 1
+                    ? Loc.F("ステッチ設定を {0} 本のパスに貼り付けました", paths.Count)
+                    : Loc.F("ステッチ設定を貼り付けました: {0}", paths[0].name),
+                StatusType.Success);
         }
 
         void DeletePath(int index)
@@ -510,6 +534,7 @@ namespace Dennokoworks.StitchMaker
             if (selectedPath == index) selectedNode = -1;
             if (selectedPath > index) selectedPath--;
             ClampSelection();
+            CollapseSelection();   // 番号がずれるので複数選択は解除する
             MarkChanged();
             RefreshUI();
         }
@@ -537,12 +562,65 @@ namespace Dennokoworks.StitchMaker
             SetStatus(Loc.F("ミラーを独立パスとして実体化しました: {0}", mirrored.name), StatusType.Success);
         }
 
+        // 1 本だけを選択する（複数選択は解除）。
         void SelectPath(int index)
+        {
+            SetPrimaryPath(index);
+            CollapseSelection();
+        }
+
+        // 設定欄・シーン編集の対象のパスを替える（複数選択はそのまま）。
+        void SetPrimaryPath(int index)
         {
             selectedPath = index;
             selectedNode = -1;
             var path = SelectedPath;
             if (path != null) presetName = path.name;
+        }
+
+        // 複数選択を selectedPath だけに戻す。
+        void CollapseSelection()
+        {
+            selectedPaths.Clear();
+            if (selectedPath >= 0) selectedPaths.Add(selectedPath);
+            selectionAnchor = selectedPath;
+        }
+
+        // パス一覧の名前のクリック。toggle = Ctrl（Mac は Cmd）で 1 本ずつ追加・解除、range = Shift で起点からの範囲を選択。
+        void ClickPath(int index, bool toggle, bool range)
+        {
+            if (document == null || index < 0 || index >= document.paths.Count) return;
+            if (range)
+            {
+                int anchor = selectionAnchor >= 0 && selectionAnchor < document.paths.Count
+                    ? selectionAnchor
+                    : (selectedPath >= 0 ? selectedPath : index);
+                if (!toggle) selectedPaths.Clear();
+                for (int i = Mathf.Min(anchor, index); i <= Mathf.Max(anchor, index); i++)
+                {
+                    if (!selectedPaths.Contains(i)) selectedPaths.Add(i);
+                }
+                SetPrimaryPath(index);   // 起点は変えない（続けて Shift + クリックで範囲を伸縮できるように）
+            }
+            else if (toggle)
+            {
+                if (selectedPaths.Remove(index))
+                {
+                    if (selectedPath == index) SetPrimaryPath(selectedPaths.Count > 0 ? selectedPaths[selectedPaths.Count - 1] : -1);
+                }
+                else
+                {
+                    selectedPaths.Add(index);
+                    SetPrimaryPath(index);
+                }
+                selectionAnchor = index;
+            }
+            else
+            {
+                SelectPath(index);
+            }
+            RefreshUI();
+            SceneView.RepaintAll();
         }
 
         void SetPreviewMode(PreviewMode mode)
@@ -763,15 +841,20 @@ namespace Dennokoworks.StitchMaker
                     MarkChanged();
                 });
 
-                var select = new Button(() =>
+                // クリックで 1 本を選択、Ctrl（Mac は Cmd）+ クリックで追加・解除、Shift + クリックで範囲選択。
+                var select = new Button { text = path.name };
+                select.clickable.clickedWithEventInfo += evt =>
                 {
-                    SelectPath(index);
-                    RefreshUI();
-                    SceneView.RepaintAll();
-                }) { text = path.name };
+                    bool toggle = false, range = false;
+                    if (evt is IPointerEvent pointer) { toggle = pointer.actionKey; range = pointer.shiftKey; }
+                    else if (evt is IMouseEvent mouse) { toggle = mouse.actionKey; range = mouse.shiftKey; }
+                    ClickPath(index, toggle, range);
+                };
                 select.AddToClassList("stitch-grow");
                 select.AddToClassList("stitch-path-name");
+                // 設定欄に出ているパスは強調、ほかの複数選択中のパスは枠だけ付ける。
                 select.EnableInClassList(ActiveClass, index == selectedPath);
+                select.EnableInClassList("stitch-path-name--selected", index != selectedPath && selectedPaths.Contains(index));
 
                 // クリック処理の途中で自分の行を作り直さないよう、次のフレームで削除する。
                 var delete = new Button(() => rootVisualElement.schedule.Execute(() => DeletePath(index)))
@@ -880,6 +963,7 @@ namespace Dennokoworks.StitchMaker
         {
             if (document == null) return;
             ClampSelection();
+            CollapseSelection();   // Undo でパスの数や並びが変わることがあるので複数選択は解除する
             needsRebuild = true;
             RefreshUI();
             SceneView.RepaintAll();
@@ -964,6 +1048,18 @@ namespace Dennokoworks.StitchMaker
             selectedPath = Mathf.Clamp(selectedPath, -1, document.paths.Count - 1);
             var path = SelectedPath;
             selectedNode = path != null ? Mathf.Clamp(selectedNode, -1, path.nodes.Count - 1) : -1;
+            // 複数選択は範囲内の番号だけを残し、selectedPath を必ず含める。
+            selectedPaths.RemoveAll(i => i < 0 || i >= document.paths.Count);
+            if (selectedPath >= 0 && !selectedPaths.Contains(selectedPath)) selectedPaths.Add(selectedPath);
+        }
+
+        // 複数選択しているパス（一覧の並び順）。何も選んでいなければ空。
+        List<int> SelectedPathIndices()
+        {
+            ClampSelection();
+            var indices = new List<int>(selectedPaths);
+            indices.Sort();
+            return indices;
         }
 
         StitchPath SelectedPath
@@ -1001,6 +1097,7 @@ namespace Dennokoworks.StitchMaker
             {
                 var path = SelectedPath;
                 if (path != null) presetName = path.name;
+                CollapseSelection();
                 RefreshUI();
             }
         }

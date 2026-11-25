@@ -50,6 +50,13 @@
     padding-left: 8px;
 }
 
+/* 複数選択中のパス（設定欄に出ているパス以外）。強調（dennoko-button-active）と同じ青枠だけを付け、太字にはしない */
+.dennoko-root .unity-button.stitch-path-name--selected {
+    background-color: var(--dennoko-surface-2);
+    border-color: var(--dennoko-semantic-info);
+    border-width: 1px;
+}
+
 .dennoko-root .stitch-path-list {
     margin-bottom: 4px;
 }

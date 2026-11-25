@@ -109,11 +109,12 @@ Manage multiple stitch lines and edit them directly in the Unity Scene view.
 
 #### Path List
 - **Selecting a Path**: Click a path name in the list to select it for editing.
+- **Multiple Selection**: **Ctrl + Click** (Cmd + Click on Mac) adds or removes one path at a time, and **Shift + Click** selects the range from the path you clicked last. The stitch settings panel shows the path you clicked last (bold); the other selected paths have a blue outline. Adding, deleting, or duplicating paths, or using Undo, returns to a single selection.
 - **Eye Icon (Show / Hide)**: Toggles path visibility. Hidden paths are excluded from both the Scene view preview and texture export.
 - **× Button**: Deletes the selected path.
 - **Right-Click Menu**: Right-click a path row for the following:
   - **Duplicate**: Duplicates the path including its shape, stitch settings, mirror settings, and Island Constrain, and inserts it right after the original.
-  - **Copy / Paste Stitch Settings**: Copies the stitch settings (mask, scale, length, width, thread color, groove, etc.) to another path. The shape, mirror settings, and Island Constrain are not changed. Copied settings are kept until Unity is closed or scripts are recompiled.
+  - **Copy / Paste Stitch Settings**: Copies the stitch settings (mask, scale, length, width, thread color, groove, etc.) to another path. The shape, mirror settings, and Island Constrain are not changed. **Choosing Paste on a row that is part of a multiple selection pastes into all selected paths at once** (on a row that is not selected, only that row). Copied settings are kept until Unity is closed or scripts are recompiled.
 - **+ Add Path**: Appends a new stitch path to the list. If a path is selected, the new path inherits its stitch settings (mask, scale, length, width, thread color, etc.), which is handy for placing the same stitch in several places. The shape (control points, Closed, Bezier Handles), mirror settings, and Island Constrain are not inherited (Island Constrain starts ON).
 
 #### Path Editing Controls

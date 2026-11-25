@@ -170,6 +170,8 @@ namespace Dennokoworks.StitchMaker
             { "パスを複製しました: {0}", "Path duplicated: {0}" },
             { "ステッチ設定をコピーしました: {0}", "Stitch settings copied: {0}" },
             { "ステッチ設定を貼り付けました: {0}", "Stitch settings pasted: {0}" },
+            { "ステッチ設定を貼り付け（選択中の {0} 本）", "Paste Stitch Settings ({0} selected paths)" },
+            { "ステッチ設定を {0} 本のパスに貼り付けました", "Stitch settings pasted to {0} paths" },
             { "同梱", "Built-in" },
             { "基本", "Basic" },
             { "糸の質感", "Thread Texture" },
